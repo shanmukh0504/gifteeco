@@ -52,8 +52,8 @@ export default function CheckoutPage() {
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-4">Please Login to Continue</h1>
           <p className="mb-4">You need to be logged in to access the checkout.</p>
-          <Link 
-            href="/login" 
+          <Link
+            href="/login"
             className="inline-block bg-blue-500 text-white px-6 py-2 rounded-md hover:bg-blue-600"
           >
             Go to Login
@@ -85,16 +85,21 @@ export default function CheckoutPage() {
           "Authorization": `Bearer ${useAuthStore.getState().token}`
         },
         body: JSON.stringify({
-          userId: user?._id,
-          items,
+          user: user?._id,
+          items: items.map(item => ({
+            product: item.product._id,
+            quantity: item.quantity,
+            size: item.size,
+            price: item.product.price
+          })),
           shippingInfo,
-          paymentInfo,
           totalAmount: total(),
         }),
       });
 
       if (!response.ok) {
-        throw new Error("Failed to place order");
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to place order");
       }
 
       const order = await response.json();
@@ -102,7 +107,8 @@ export default function CheckoutPage() {
       router.push(`/orders/${order._id}`);
     } catch (error) {
       console.error("Error placing order:", error);
-      alert("Failed to place order. Please try again.");
+      const errorMessage = error instanceof Error ? error.message : "Failed to place order. Please try again.";
+      alert(errorMessage);
     } finally {
       setIsLoading(false);
     }
