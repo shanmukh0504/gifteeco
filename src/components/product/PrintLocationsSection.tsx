@@ -58,17 +58,16 @@ export default function PrintLocationsSection({
       {printLocations.map((location, index) => {
         const box = getBoundingBox(location.slot);
         const mockupImage = getMockupImage(location.slot);
-        const availableSlotsForThis = [
-          ...availableSlots,
-          location.slot,
-        ].sort((a, b) => {
-          const order: Record<SlotKey, number> = {
-            front: 0,
-            back: 1,
-            chest: 2,
-          };
-          return order[a] - order[b];
-        });
+        const availableSlotsForThis = [...availableSlots, location.slot].sort(
+          (a, b) => {
+            const order: Record<SlotKey, number> = {
+              front: 0,
+              back: 1,
+              chest: 2,
+            };
+            return order[a] - order[b];
+          }
+        );
 
         return (
           <div
@@ -203,4 +202,3 @@ export default function PrintLocationsSection({
     </div>
   );
 }
-
