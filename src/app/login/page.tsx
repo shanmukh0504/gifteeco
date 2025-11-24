@@ -1,100 +1,115 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import Button from '@/components/ui/Button';
-import useAuthStore from '@/store/useAuthStore';
-import Link from 'next/link';
+import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import Card from "@/components/ui/Card";
+import Input from "@/components/ui/Input";
+import Button from "@/components/ui/Button";
+import useAuthStore from "@/store/useAuthStore";
 
 export default function LoginPage() {
   const router = useRouter();
-  const login = useAuthStore((state) => state.login);
-  const [formData, setFormData] = useState({
-    email: '',
-    password: ''
-  });
-  const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const loginStore = useAuthStore((state) => state.login);
+  const [form, setForm] = useState({ email: "", password: "" });
+  const [loading, setLoading] = useState(false);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    setIsLoading(true);
+    setLoading(true);
 
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to login');
+        const { error } = await response.json();
+        throw new Error(error || "Failed to login");
       }
 
-      login(data.user, data.token);
-      router.push('/');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      const data = await response.json();
+      loginStore(data.user, data.token);
+      toast.success("Welcome back!");
+      router.push(data.user.role === "admin" ? "/admin" : "/");
+    } catch (error) {
+      console.error(error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Login failed";
+      toast.error(errorMessage);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <h1 className="text-3xl font-bold text-center mb-8">Login</h1>
-        <form onSubmit={handleSubmit} className="space-y-4 w-full">
-          {error && (
-            <div className="bg-red-50 text-red-500 p-3 rounded-md text-sm">
-              {error}
-            </div>
-          )}
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-              Email
-            </label>
-            <input
-              type="email"
-              id="email"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-              Password
-            </label>
-            <input
-              type="password"
-              id="password"
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-            />
-          </div>
-          <Button 
-            type="submit" 
-            variant="primary" 
-            className="w-full"
-            disabled={isLoading}
-          >
-            {isLoading ? 'Logging in...' : 'Login'}
-          </Button>
-          <p className="text-center text-sm text-gray-600 mt-4">
-            Don&apos;t have an account? &nbsp;
-            <Link href="/signup" className="text-blue-600 hover:text-blue-500">
-              Sign up here
-            </Link>
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#FFF4F1] to-[#FFE1D7] px-4 py-12">
+      <Card className="w-full max-w-md space-y-8 bg-white/95 shadow-2xl">
+        <div className="space-y-3 text-center">
+          <p className="text-sm font-semibold uppercase tracking-wide text-brand">
+            Welcome back
           </p>
+          <h1 className="text-3xl font-bold text-neutral-900">
+            Login to Gifteeco
+          </h1>
+          <p className="text-sm text-neutral-500">
+            Access your dashboard and keep gifting magic going
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <Input
+            label="Email"
+            type="email"
+            name="email"
+            value={form.email}
+            onChange={handleChange}
+            placeholder="you@company.com"
+            required
+          />
+
+          <Input
+            label="Password"
+            type="password"
+            name="password"
+            value={form.password}
+            onChange={handleChange}
+            placeholder="••••••••"
+            required
+          />
+
+          <div className="flex justify-end">
+            <Link
+              href="/forgot-password"
+              className="text-sm font-semibold text-brand hover:underline"
+            >
+              Forgot password?
+            </Link>
+          </div>
+
+          <Button type="submit" className="w-full" isLoading={loading}>
+            Login
+          </Button>
         </form>
-      </div>
+
+        <p className="text-center text-sm text-neutral-500">
+          Don&apos;t have an account?{" "}
+          <Link
+            href="/signup"
+            className="font-semibold text-brand hover:underline"
+          >
+            Create one
+          </Link>
+        </p>
+      </Card>
     </div>
   );
 }
