@@ -1,31 +1,66 @@
 "use client";
 
-import { useMemo, useState, useEffect, useCallback, useRef } from "react";
+import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import useCartStore from "@/store/useCartStore";
 import useAuthStore from "@/store/useAuthStore";
 import useWishlistStore from "@/store/useWishlistStore";
-import useCustomizationStore from "@/store/useCustomizationStore";
+import useCustomizationStore, {
+  DesignElement,
+} from "@/store/useCustomizationStore";
 import AuthModal from "@/components/auth/AuthModal";
+import Modal from "@/components/ui/Modal";
 import {
   SlotKey,
+  SLOT_LABELS,
   DEFAULT_BOUNDING_BOXES,
   BoundingBox,
 } from "@/constants/customization";
-import {
-  ProductDetailViewProps,
-  ProductColor,
-  ColorEntry,
-  PrintLocation,
-} from "./types";
-import ProductImageGallery from "./ProductImageGallery";
-import PrintLocationsSection from "./PrintLocationsSection";
-import ShareModal from "./ShareModal";
-import { useCustomizationSync } from "./hooks/useCustomizationSync";
-import { useImageUpload } from "./hooks/useImageUpload";
+
+type PrintLocation = {
+  slot: SlotKey;
+  uploadedImage?: string;
+  elements?: DesignElement[];
+};
+
+type SlotCustomization = {
+  enabled?: boolean;
+  mockupImage?: string;
+  allowImage?: boolean;
+  allowText?: boolean;
+  allowFill?: boolean;
+};
+
+type ProductColor = {
+  images?: string[];
+  stock?: number;
+  customization?: Record<SlotKey, SlotCustomization>;
+};
+
+type ProductDetail = {
+  _id: string;
+  name: string;
+  description: string;
+  price: number;
+  minQuantity?: number;
+  sizes?: string[];
+  colors?: Record<string, ProductColor>;
+  noColor?: ProductColor;
+  customDefaults?: Record<SlotKey, BoundingBox>;
+  ratingsSummary?: {
+    average: number;
+    count: number;
+  };
+};
+
+type ColorEntry = [string, ProductColor];
+
+interface ProductDetailViewProps {
+  product: ProductDetail;
+}
 
 const printSizes = ["3m × 3m", "4m × 4m", "5m × 5m"];
 const colorSwatches = ["#c3b2a3", "#e6dbd0", "#c5b7a0", "#f6f2ec"];
@@ -67,9 +102,13 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
     quantityPresets[0]
   );
   const [customQty, setCustomQty] = useState("");
+  const searchParams = useSearchParams();
   const [selectedImage, setSelectedImage] = useState(0);
   const [selectedPrintSize, setSelectedPrintSize] = useState(printSizes[0]);
   const [printLocations, setPrintLocations] = useState<PrintLocation[]>([]);
+  const [uploadingImages, setUploadingImages] = useState<
+    Record<number, boolean>
+  >({});
   const [showShareDropdown, setShowShareDropdown] = useState(false);
 
   useEffect(() => {
@@ -92,7 +131,8 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
     }
   }, [product._id, product.ratingsSummary?.count]);
 
-  const { clearMergedImage } = useCustomizationStore();
+  const { getMergedImage, saveMergedImage, clearMergedImage, loadFromStorage } =
+    useCustomizationStore();
 
   const getBoundingBox = useCallback(
     (slot: SlotKey): BoundingBox => {
@@ -101,12 +141,121 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
     [product.customDefaults]
   );
 
-  // Use customization sync hook
-  useCustomizationSync({
-    productId: product._id,
-    selectedColor,
-    setPrintLocations,
+  // Sync printLocations with merged images only
+  const syncPrintLocations = useCallback(async () => {
+    loadFromStorage(product._id);
+    const locations: PrintLocation[] = [];
+
+    // Only get merged images - no element rendering
+    for (const slot of ["front", "back", "chest"] as SlotKey[]) {
+      const mergedImage = getMergedImage(product._id, selectedColor, slot);
+      if (mergedImage) {
+        locations.push({
+          slot,
+          uploadedImage: mergedImage,
+        });
+      }
+    }
+    setPrintLocations(locations);
+    return locations;
+  }, [product._id, selectedColor, getMergedImage, loadFromStorage]);
+
+  const syncInProgressRef = useRef(false);
+  const lastSyncedColorRef = useRef<string | null>(null);
+  const lastSyncedProductIdRef = useRef<string | null>(null);
+
+  // Load saved design from customize page and sync with store
+  useEffect(() => {
+    // Only sync if product ID changed or it's the first load
+    if (
+      lastSyncedProductIdRef.current === product._id &&
+      !searchParams.get("customized")
+    ) {
+      return;
+    }
+
+    if (syncInProgressRef.current) return;
+
+    syncInProgressRef.current = true;
+    lastSyncedProductIdRef.current = product._id;
+    let isMounted = true;
+
+    const loadDesign = async () => {
+      try {
+        const customized = searchParams.get("customized");
+        const locations = await syncPrintLocations();
+
+        if (isMounted && locations.length > 0 && customized === "true") {
+          toast.success("Your design has been loaded!");
+        }
+      } finally {
+        syncInProgressRef.current = false;
+      }
+    };
+
+    loadDesign();
+
+    // Listen for storage changes to sync in real-time (only from other tabs)
+    const handleStorageChange = async (e: StorageEvent) => {
+      if (
+        e.key === `customization_${product._id}` &&
+        e.newValue &&
+        isMounted &&
+        !syncInProgressRef.current
+      ) {
+        syncInProgressRef.current = true;
+        try {
+          await syncPrintLocations();
+        } finally {
+          syncInProgressRef.current = false;
+        }
+      }
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    return () => {
+      isMounted = false;
+      window.removeEventListener("storage", handleStorageChange);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product._id, searchParams.get("customized")]);
+
+  // Sync when color changes
+  useEffect(() => {
+    // Only sync if color actually changed
+    if (lastSyncedColorRef.current === selectedColor) {
+      return;
+    }
+
+    if (syncInProgressRef.current) return;
+
+    syncInProgressRef.current = true;
+    lastSyncedColorRef.current = selectedColor;
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        await syncPrintLocations();
+      } finally {
+        syncInProgressRef.current = false;
+      }
+    }, 100);
+
+    return () => {
+      clearTimeout(timeoutId);
+      syncInProgressRef.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedColor]);
+
+  const imageWrapRef = useRef<HTMLDivElement | null>(null);
+  const [isMagnifying, setIsMagnifying] = useState(false);
+  const [lensPosition, setLensPosition] = useState<{ x: number; y: number }>({
+    x: 0,
+    y: 0,
   });
+  const lensSize = 120;
+  const zoomFactor = 5;
+  const previewSize = 600;
 
   const currentColor = colorEntries.find(([key]) => key === selectedColor)?.[1];
   const currentColorImages = currentColor?.images ?? [];
@@ -114,32 +263,30 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
   const galleryImages =
     currentColorImages.length > 0 ? currentColorImages : fallbackImages;
 
+  const mainImage = galleryImages[selectedImage] ?? galleryImages[0];
+
   const ratingCount = product.ratingsSummary?.count ?? 0;
   const ratingAverage = product.ratingsSummary?.average ?? 0;
   const [reviews, setReviews] = useState<Review[]>([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const reviewsSectionRef = useRef<HTMLDivElement | null>(null);
 
-  // Use image upload hook
-  const { uploadingImages, handleImageUpload: uploadImage } = useImageUpload({
-    productId: product._id,
-    selectedColor,
-    getBoundingBox,
-  });
+  function handleMouseMove(e: React.MouseEvent<HTMLDivElement>) {
+    const wrap = imageWrapRef.current;
+    if (!wrap) return;
+    const rect = wrap.getBoundingClientRect();
+    const clientX = e.clientX;
+    const clientY = e.clientY;
 
-  const handleImageUpload = async (index: number, file: File) => {
-    const location = printLocations[index];
-    if (location) {
-      uploadImage(index, file, location.slot, (mergedImage) => {
-        const updated = [...printLocations];
-        updated[index] = {
-          ...updated[index],
-          uploadedImage: mergedImage,
-        };
-        setPrintLocations(updated);
-      });
-    }
-  };
+    let x = clientX - rect.left;
+    let y = clientY - rect.top;
+
+    const half = lensSize / 2;
+    x = Math.max(half, Math.min(rect.width - half, x));
+    y = Math.max(half, Math.min(rect.height - half, y));
+
+    setLensPosition({ x, y });
+  }
 
   const availableSlots = useMemo(() => {
     const usedSlots = new Set(printLocations.map((loc) => loc.slot));
@@ -164,6 +311,99 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
     const updated = [...printLocations];
     updated[index] = { ...updated[index], slot: newSlot };
     setPrintLocations(updated);
+  };
+
+  const handleImageUpload = async (index: number, file: File) => {
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file");
+      return;
+    }
+
+    setUploadingImages((prev) => ({ ...prev, [index]: true }));
+    toast.info("Uploading image...");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("Upload failed");
+      }
+
+      // Create a merged image that covers the entire bounding box
+      const location = printLocations[index];
+      if (location) {
+        // Read the uploaded image
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const uploadedImageData = reader.result as string;
+
+          // Get bounding box dimensions
+          const box = getBoundingBox(location.slot);
+          const imageWidth = 640; // Base image width
+          const imageHeight = 800; // Base image height
+          const boxWidth = box.width * imageWidth;
+          const boxHeight = box.height * imageHeight;
+
+          // Create canvas and draw uploaded image to cover entire bounding box
+          const canvas = document.createElement("canvas");
+          const scale = 2; // High resolution
+          canvas.width = boxWidth * scale;
+          canvas.height = boxHeight * scale;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            toast.error("Failed to process image");
+            setUploadingImages((prev) => ({ ...prev, [index]: false }));
+            return;
+          }
+
+          ctx.scale(scale, scale);
+
+          // Load and draw the uploaded image to cover the entire box
+          const img = document.createElement("img");
+          await new Promise<void>((resolve, reject) => {
+            img.onload = () => {
+              // Draw image to cover entire bounding box (stretch to fit)
+              ctx.drawImage(img, 0, 0, boxWidth, boxHeight);
+              resolve();
+            };
+            img.onerror = () => reject(new Error("Failed to load image"));
+            img.src = uploadedImageData;
+          });
+
+          // Convert canvas to base64 image
+          const mergedImage = canvas.toDataURL("image/png");
+
+          // Save merged image to store
+          saveMergedImage(
+            product._id,
+            selectedColor,
+            location.slot,
+            mergedImage
+          );
+
+          // Update printLocations
+          const updated = [...printLocations];
+          updated[index] = {
+            ...updated[index],
+            uploadedImage: mergedImage,
+          };
+          setPrintLocations(updated);
+          toast.success("Image uploaded successfully!");
+        };
+        reader.readAsDataURL(file);
+      }
+    } catch (error) {
+      console.error("Error uploading image:", error);
+      toast.error("Failed to upload image");
+    } finally {
+      setUploadingImages((prev) => ({ ...prev, [index]: false }));
+    }
   };
 
   const handleDeleteImage = (index: number) => {
@@ -222,12 +462,113 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
   return (
     <div className="space-y-12">
       <div className="grid gap-12 lg:grid-cols-[minmax(0,40%)_minmax(0,60%)]">
-        <ProductImageGallery
-          images={galleryImages}
-          selectedImage={selectedImage}
-          onImageSelect={setSelectedImage}
-          productName={product.name}
-        />
+        <div className="space-y-5">
+          <div className="relative">
+            <div
+              ref={imageWrapRef}
+              className="relative aspect-[10/10] overflow-hidden border border-[#efe5dc] bg-white rounded-2xl"
+              onMouseEnter={() => setIsMagnifying(true)}
+              onMouseLeave={() => setIsMagnifying(false)}
+              onMouseMove={handleMouseMove}
+            >
+              {mainImage ? (
+                <Image
+                  src={mainImage}
+                  alt={product.name}
+                  fill
+                  className="object-cover"
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center text-neutral-400">
+                  No image available
+                </div>
+              )}
+              {/* Lens overlay */}
+              {isMagnifying && mainImage && (
+                <div
+                  className="pointer-events-none absolute z-20 rounded-sm border border-white/70 shadow-[0_0_0_1px_rgba(0,0,0,0.25)]"
+                  style={{
+                    width: `${lensSize}px`,
+                    height: `${lensSize}px`,
+                    left: `${lensPosition.x - lensSize / 2}px`,
+                    top: `${lensPosition.y - lensSize / 2}px`,
+                    backgroundImage:
+                      "repeating-linear-gradient(0deg, rgba(255,255,255,0.12) 0, rgba(255,255,255,0.12) 1px, transparent 1px, transparent 6px), repeating-linear-gradient(90deg, rgba(255,255,255,0.12) 0, rgba(255,255,255,0.12) 1px, transparent 1px, transparent 6px)",
+                    backgroundColor: "rgba(255,255,255,0.08)",
+                    backdropFilter: "saturate(80%)",
+                  }}
+                />
+              )}
+            </div>
+            {/* Zoom preview to the right of the image (outside overflow-hidden) */}
+            {isMagnifying && mainImage && (
+              <div
+                className="pointer-events-none absolute top-0 z-30 hidden lg:block"
+                style={{
+                  left: "100%",
+                  marginLeft: "16px",
+                  aspectRatio: "1 / 1",
+                  width: `${previewSize}px`,
+                  backgroundImage: `url(${mainImage})`,
+                  backgroundRepeat: "no-repeat",
+                  backgroundSize: (() => {
+                    const wrap = imageWrapRef.current;
+                    const rect = wrap?.getBoundingClientRect();
+                    const w = rect?.width ?? 1;
+                    const h = rect?.height ?? 1;
+                    return `${w * zoomFactor}px ${h * zoomFactor}px`;
+                  })(),
+                  backgroundPosition: (() => {
+                    const wrap = imageWrapRef.current;
+                    const rect = wrap?.getBoundingClientRect();
+                    const w = rect?.width ?? 1;
+                    const h = rect?.height ?? 1;
+                    const relX = lensPosition.x / w;
+                    const relY = lensPosition.y / h;
+                    const bgW = w * zoomFactor;
+                    const bgH = h * zoomFactor;
+                    // Center the zoomed area on the lens, then clamp
+                    let bgX = -(relX * bgW - previewSize / 2);
+                    let bgY = -(relY * bgH - previewSize / 2);
+                    const minX = -(bgW - previewSize);
+                    const minY = -(bgH - previewSize);
+                    const maxX = 0;
+                    const maxY = 0;
+                    bgX = Math.min(maxX, Math.max(minX, bgX));
+                    bgY = Math.min(maxY, Math.max(minY, bgY));
+                    return `${bgX}px ${bgY}px`;
+                  })(),
+                  border: "1px solid #efe5dc",
+                  boxShadow: "0 10px 25px rgba(0,0,0,0.08)",
+                  backgroundColor: "#fff",
+                }}
+              />
+            )}
+          </div>
+
+          {galleryImages.length > 1 && (
+            <div className="flex gap-3">
+              {galleryImages.map((img, index) => (
+                <button
+                  key={img + index}
+                  onClick={() => setSelectedImage(index)}
+                  className={`relative h-20 w-20 flex-shrink-0 overflow-hidden border rounded-2xl ${
+                    selectedImage === index
+                      ? "border-[#d88766]"
+                      : "border-transparent"
+                  }`}
+                >
+                  <Image
+                    src={img}
+                    alt={`${product.name}-${index}`}
+                    fill
+                    className="object-cover"
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className="space-y-6 text-[#1d1d1f]">
           <div className="space-y-1">
@@ -384,21 +725,172 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
           </div>
 
           {hasCustomizationImages && (
-            <>
-              <PrintLocationsSection
-                printLocations={printLocations}
-                availableSlots={availableSlots}
-                selectedColor={selectedColor}
-                productId={product._id}
-                getBoundingBox={getBoundingBox}
-                getMockupImage={getMockupImage}
-                uploadingImages={uploadingImages}
-                onAddLocation={handleAddPrintLocation}
-                onRemoveLocation={handleRemovePrintLocation}
-                onSlotChange={handleSlotChange}
-                onImageUpload={handleImageUpload}
-                onDeleteImage={handleDeleteImage}
-              />
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-[#525252]">Print Locations</p>
+                {printLocations.length < 3 && (
+                  <button
+                    onClick={handleAddPrintLocation}
+                    className="text-sm text-[#c86446] hover:underline"
+                  >
+                    + Add Print Location
+                  </button>
+                )}
+              </div>
+
+              {printLocations.length === 0 && (
+                <div className="rounded-2xl border border-[#e5dfd7] p-4 text-center text-sm text-[#6f6f6f]">
+                  No print locations added. Click &quot;Add Print Location&quot;
+                  to get started.
+                </div>
+              )}
+
+              {printLocations.map((location, index) => {
+                const box = getBoundingBox(location.slot);
+                const mockupImage = getMockupImage(location.slot);
+                const availableSlotsForThis = [
+                  ...availableSlots,
+                  location.slot,
+                ].sort((a, b) => {
+                  const order: Record<SlotKey, number> = {
+                    front: 0,
+                    back: 1,
+                    chest: 2,
+                  };
+                  return order[a] - order[b];
+                });
+
+                return (
+                  <div
+                    key={index}
+                    className="space-y-3 rounded-2xl border border-[#e5dfd7] p-4"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 space-y-2">
+                        <label className="text-sm text-[#525252]">
+                          Print Location {index + 1}
+                        </label>
+                        <select
+                          value={location.slot}
+                          onChange={(e) =>
+                            handleSlotChange(index, e.target.value as SlotKey)
+                          }
+                          className="w-full rounded-2xl border border-[#e5dfd7] px-4 py-3 text-sm text-[#4a4a4a]"
+                        >
+                          {availableSlotsForThis.map((slot) => (
+                            <option key={slot} value={slot}>
+                              {SLOT_LABELS[slot]}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <button
+                        onClick={() => handleRemovePrintLocation(index)}
+                        className="ml-3 rounded-full p-2 text-[#6f6f6f] hover:bg-[#f5f5f5]"
+                        title="Remove print location"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-5 w-5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+
+                    {location.uploadedImage && mockupImage && (
+                      <div className="relative aspect-[10/10] overflow-hidden rounded-2xl border border-[#e5dfd7] bg-white">
+                        <Image
+                          src={mockupImage}
+                          alt={`${location.slot} mockup`}
+                          fill
+                          className="object-cover"
+                        />
+                        <div
+                          className="absolute bg-white/5 backdrop-blur-sm"
+                          style={{
+                            left: `${box.x * 100}%`,
+                            top: `${box.y * 100}%`,
+                            width: `${box.width * 100}%`,
+                            height: `${box.height * 100}%`,
+                            overflow: "hidden",
+                          }}
+                        >
+                          <img
+                            src={location.uploadedImage}
+                            alt="uploaded design"
+                            className="h-full w-full object-contain"
+                            style={{ imageRendering: "auto" }}
+                          />
+                        </div>
+                        <button
+                          onClick={() => handleDeleteImage(index)}
+                          className="absolute right-2 top-2 rounded-full bg-red-500 p-1.5 text-white shadow hover:bg-red-600"
+                          title="Delete image"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-4 w-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="flex gap-3">
+                      <label className="flex-1 cursor-pointer">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleImageUpload(index, file);
+                            // Reset input so same file can be selected again
+                            e.target.value = "";
+                          }}
+                          className="hidden"
+                          disabled={uploadingImages[index]}
+                        />
+                        <div className="flex items-center justify-center rounded-2xl border border-[#e5dfd7] px-4 py-3 text-sm text-[#4a4a4a] transition hover:border-[#c86446] hover:text-[#c86446] disabled:cursor-not-allowed disabled:opacity-50">
+                          {uploadingImages[index]
+                            ? "Uploading..."
+                            : "Upload your image"}
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {printLocations.length > 0 && (
+                <div className="pt-2">
+                  <Link
+                    href={`/product/customize/${
+                      product._id
+                    }?color=${encodeURIComponent(selectedColor)}`}
+                    className="flex w-full items-center justify-center rounded-2xl bg-[#c86446] px-6 py-3 text-center text-white text-sm shadow shadow-[#c86446]/30 transition hover:bg-[#ba5839]"
+                  >
+                    Sketch your image
+                  </Link>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <label className="text-sm text-[#525252]">Print Size</label>
@@ -414,7 +906,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                   ))}
                 </select>
               </div>
-            </>
+            </div>
           )}
 
           <div className="space-y-2">
@@ -626,12 +1118,172 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
               </svg>
             </button>
 
-            <ShareModal
+            {/* Share Modal */}
+            <Modal
               isOpen={showShareDropdown}
               onClose={() => setShowShareDropdown(false)}
-              productId={product._id}
-              productName={product.name}
-            />
+              size="md"
+            >
+              <div className="space-y-6">
+                {/* Social Media Icons and Names */}
+                <div>
+                  <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wide mb-4">
+                    Share Via
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* WhatsApp */}
+                    <button
+                      onClick={() => {
+                        const url = `${window.location.origin}/product/${product._id}`;
+                        const text = `Check out ${product.name} on GifteeCo! ${url}`;
+                        window.open(
+                          `https://wa.me/?text=${encodeURIComponent(text)}`,
+                          "_blank"
+                        );
+                        setShowShareDropdown(false);
+                      }}
+                      className="flex items-center gap-3 px-4 py-3 rounded-lg border border-neutral-200 hover:bg-neutral-50 transition"
+                    >
+                      <svg
+                        className="w-6 h-6"
+                        fill="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
+                      </svg>
+                      <span className="text-sm text-neutral-700">WhatsApp</span>
+                    </button>
+
+                    {/* Instagram */}
+                    <button
+                      onClick={() => {
+                        window.open(`https://www.instagram.com/`, "_blank");
+                        setShowShareDropdown(false);
+                        toast.info(
+                          "Copy the product link to share on Instagram"
+                        );
+                      }}
+                      className="flex items-center gap-3 px-4 py-3 rounded-lg border border-neutral-200 hover:bg-neutral-50 transition"
+                    >
+                      <svg
+                        className="w-6 h-6"
+                        fill="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
+                      </svg>
+                      <span className="text-sm text-neutral-700">
+                        Instagram
+                      </span>
+                    </button>
+
+                    {/* X (Twitter) */}
+                    <button
+                      onClick={() => {
+                        const url = `${window.location.origin}/product/${product._id}`;
+                        const text = `Check out ${product.name} on GifteeCo!`;
+                        window.open(
+                          `https://twitter.com/intent/tweet?text=${encodeURIComponent(
+                            text
+                          )}&url=${encodeURIComponent(url)}`,
+                          "_blank"
+                        );
+                        setShowShareDropdown(false);
+                      }}
+                      className="flex items-center gap-3 px-4 py-3 rounded-lg border border-neutral-200 hover:bg-neutral-50 transition"
+                    >
+                      <svg
+                        className="w-6 h-6"
+                        fill="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                      </svg>
+                      <span className="text-sm text-neutral-700">
+                        X (Twitter)
+                      </span>
+                    </button>
+
+                    {/* Facebook */}
+                    <button
+                      onClick={() => {
+                        const url = `${window.location.origin}/product/${product._id}`;
+                        window.open(
+                          `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
+                            url
+                          )}`,
+                          "_blank"
+                        );
+                        setShowShareDropdown(false);
+                      }}
+                      className="flex items-center gap-3 px-4 py-3 rounded-lg border border-neutral-200 hover:bg-neutral-50 transition"
+                    >
+                      <svg
+                        className="w-6 h-6"
+                        fill="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                      </svg>
+                      <span className="text-sm text-neutral-700">Facebook</span>
+                    </button>
+
+                    {/* LinkedIn */}
+                    <button
+                      onClick={() => {
+                        const url = `${window.location.origin}/product/${product._id}`;
+                        window.open(
+                          `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(
+                            url
+                          )}`,
+                          "_blank"
+                        );
+                        setShowShareDropdown(false);
+                      }}
+                      className="flex items-center gap-3 px-4 py-3 rounded-lg border border-neutral-200 hover:bg-neutral-50 transition"
+                    >
+                      <svg
+                        className="w-6 h-6"
+                        fill="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+                      </svg>
+                      <span className="text-sm text-neutral-700">LinkedIn</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Link with Copy Button */}
+                <div className="pt-4 border-t border-neutral-200">
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 px-4 py-2 bg-neutral-50 rounded-lg border border-neutral-200 relative overflow-hidden">
+                      <p className="text-sm text-neutral-600 truncate pr-8">
+                        {typeof window !== "undefined"
+                          ? `${window.location.origin}/product/${product._id}`
+                          : ""}
+                      </p>
+                      {/* Fade gradient on the right */}
+                      <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-neutral-50 to-transparent pointer-events-none" />
+                    </div>
+                    <button
+                      onClick={async () => {
+                        const url = `${window.location.origin}/product/${product._id}`;
+                        try {
+                          await navigator.clipboard.writeText(url);
+                          toast.success("Link copied to clipboard!");
+                        } catch {
+                          toast.error("Failed to copy link");
+                        }
+                      }}
+                      className="px-4 py-2 bg-[var(--color-button)] text-white rounded-lg hover:bg-[var(--color-button-hover)] transition whitespace-nowrap"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </Modal>
           </div>
         </div>
       </div>
