@@ -12,36 +12,24 @@ interface AuthState {
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
+  _hasHydrated: boolean;
+  setHasHydrated: (state: boolean) => void;
   login: (user: User, token: string) => void;
   logout: () => void;
 }
 
-// Get initial state from localStorage if it exists
-const getInitialState = () => {
-  try {
-    const savedAuth = localStorage.getItem('auth-storage');
-    if (savedAuth) {
-      const { state } = JSON.parse(savedAuth);
-      return {
-        user: state.user,
-        token: state.token,
-        isAuthenticated: state.isAuthenticated
-      };
-    }
-  } catch (error) {
-    console.error('Error reading from localStorage:', error);
-  }
-  return {
-    user: null,
-    token: null,
-    isAuthenticated: false
-  };
-};
-
 const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
-      ...getInitialState(),
+      user: null,
+      token: null,
+      isAuthenticated: false,
+      _hasHydrated: false,
+      setHasHydrated: (state) => {
+        set({
+          _hasHydrated: state,
+        });
+      },
       login: (user: User, token: string) => {
         set({ user, token, isAuthenticated: true });
       },
@@ -51,7 +39,21 @@ const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => {
+        // Check if we're in a browser environment
+        if (typeof window !== 'undefined') {
+          return localStorage;
+        }
+        // Return a no-op storage for SSR
+        return {
+          getItem: () => null,
+          setItem: () => { },
+          removeItem: () => { },
+        };
+      }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
     }
   )
 );

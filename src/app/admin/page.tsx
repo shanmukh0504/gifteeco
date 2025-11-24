@@ -1,284 +1,192 @@
-"use client";
+'use client';
 
-import { useEffect, useState } from "react";
-import useAuthStore from "@/store/useAuthStore";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { useEffect, useState } from 'react';
+import Card from '@/components/ui/Card';
+import { FaBox, FaShoppingCart, FaUsers, FaDollarSign, FaArrowUp, FaArrowDown } from 'react-icons/fa';
 
-interface Product {
-  _id: string;
-  name: string;
-  price: number;
-  stock: number;
-  category: string;
-}
-
-interface Order {
-  _id: string;
-  totalAmount: number;
-  status: string;
-  createdAt: string;
-  user: {
-    _id: string;
-    name: string;
-    email: string;
-  };
-  shippingInfo: {
-    firstName: string;
-    lastName: string;
-    address: string;
-    city: string;
-    postalCode: string;
-    country: string;
-  };
-  items: {
-    product: {
-      _id: string;
-      name: string;
-      price: number;
-    };
-    quantity: number;
-    size: string;
-  }[];
-}
-
-interface User {
-  _id: string;
-  name: string;
-  email: string;
-  role: string;
+interface Stats {
+  totalProducts: number;
+  totalOrders: number;
+  totalUsers: number;
+  totalRevenue: number;
+  recentOrders: number;
+  lowStockProducts: number;
 }
 
 export default function AdminDashboard() {
-  const { user } = useAuthStore();
-  const router = useRouter();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [activeTab, setActiveTab] = useState('products');
+  const [stats, setStats] = useState<Stats>({
+    totalProducts: 0,
+    totalOrders: 0,
+    totalUsers: 0,
+    totalRevenue: 0,
+    recentOrders: 0,
+    lowStockProducts: 0,
+  });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user || user.role !== 'admin') {
-      router.push('/login');
-      return;
-    }
-
-    const fetchData = async () => {
+    const fetchStats = async () => {
       try {
-        // Fetch all data in parallel without headers
         const [productsRes, ordersRes, usersRes] = await Promise.all([
           fetch('/api/products'),
           fetch('/api/orders'),
-          fetch('/api/users')
+          fetch('/api/users'),
         ]);
 
-        // Check if responses are ok
-        if (!productsRes.ok || !ordersRes.ok || !usersRes.ok) {
-          throw new Error('Failed to fetch data');
-        }
+        const products = await productsRes.json();
+        const orders = await ordersRes.json();
+        const users = await usersRes.json();
 
-        // Parse all responses in parallel
-        const [productsData, ordersData, usersData] = await Promise.all([
-          productsRes.json(),
-          ordersRes.json(),
-          usersRes.json()
-        ]);
+        const totalRevenue = orders.reduce((sum: number, order: { totalAmount?: number }) => sum + (order.totalAmount || 0), 0);
+        const recentOrders = orders.filter((order: { createdAt: string }) => {
+          const orderDate = new Date(order.createdAt);
+          const weekAgo = new Date();
+          weekAgo.setDate(weekAgo.getDate() - 7);
+          return orderDate >= weekAgo;
+        }).length;
 
-        // Update state with fetched data
-        setProducts(productsData);
-        setOrders(ordersData);
-        setUsers(usersData);
+        const getTotalStock = (product: { hasColorOptions?: boolean; colors?: Record<string, { stock?: number }>; noColor?: { stock?: number } }) => {
+          if (product.hasColorOptions && product.colors) {
+            return Object.values(product.colors).reduce(
+              (sum: number, color: { stock?: number }) => sum + (color?.stock || 0),
+              0
+            );
+          }
+          return product.noColor?.stock || 0;
+        };
+
+        const lowStockProducts = products.filter((p: { hasColorOptions?: boolean; colors?: Record<string, { stock?: number }>; noColor?: { stock?: number } }) => getTotalStock(p) < 10).length;
+
+        setStats({
+          totalProducts: products.length,
+          totalOrders: orders.length,
+          totalUsers: users.length,
+          totalRevenue,
+          recentOrders,
+          lowStockProducts,
+        });
       } catch (error) {
-        console.error('Error fetching data:', error);
+        console.error('Error fetching stats:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchData();
-  }, [user, router]);
-
-  const handleAddProduct = () => {
-    router.push('/admin/products/new');
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'pending':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'processing':
-        return 'bg-blue-100 text-blue-800';
-      case 'completed':
-        return 'bg-green-100 text-green-800';
-      case 'cancelled':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
+    fetchStats();
+  }, []);
 
   if (loading) {
-    return <div className="text-center py-8">Loading...</div>;
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#FF9AA2]"></div>
+      </div>
+    );
   }
 
+  const statCards = [
+    {
+      title: 'Total Products',
+      value: stats.totalProducts,
+      icon: FaBox,
+      color: 'bg-[#FF9AA2]',
+      change: '+12%',
+      trend: 'up',
+    },
+    {
+      title: 'Total Orders',
+      value: stats.totalOrders,
+      icon: FaShoppingCart,
+      color: 'bg-[#FFB3BA]',
+      change: `+${stats.recentOrders} this week`,
+      trend: 'up',
+    },
+    {
+      title: 'Total Users',
+      value: stats.totalUsers,
+      icon: FaUsers,
+      color: 'bg-[#FFD6D9]',
+      change: '+5%',
+      trend: 'up',
+    },
+    {
+      title: 'Total Revenue',
+      value: `$${stats.totalRevenue.toLocaleString()}`,
+      icon: FaDollarSign,
+      color: 'bg-[#FFE5E7]',
+      change: '+8%',
+      trend: 'up',
+    },
+  ];
+
   return (
-    <div className="max-w-7xl mx-auto p-6">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-        {activeTab === 'products' && (
-          <button
-            onClick={handleAddProduct}
-            className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
-          >
-            Add New Product
-          </button>
-        )}
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-3xl font-bold text-neutral-900 mb-2">Dashboard</h1>
+        <p className="text-neutral-600">Welcome back! Here&apos;s what&apos;s happening with your store.</p>
       </div>
 
-      <div className="mb-6">
-        <div className="border-b border-gray-200">
-          <nav className="-mb-px flex space-x-8">
-            {['products', 'orders', 'users'].map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`${
-                  activeTab === tab
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                } whitespace-nowrap py-4 px-1 border-b-2 font-medium capitalize`}
-              >
-                {tab}
-              </button>
-            ))}
-          </nav>
-        </div>
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {statCards.map((stat, index) => {
+          const Icon = stat.icon;
+          return (
+            <Card key={index} hover className="relative overflow-hidden">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-neutral-600 mb-1">{stat.title}</p>
+                  <p className="text-2xl font-bold text-neutral-900">{stat.value}</p>
+                  <div className="flex items-center mt-2 text-xs">
+                    {stat.trend === 'up' ? (
+                      <FaArrowUp className="text-green-500 mr-1" />
+                    ) : (
+                      <FaArrowDown className="text-red-500 mr-1" />
+                    )}
+                    <span className="text-neutral-500">{stat.change}</span>
+                  </div>
+                </div>
+                <div className={`${stat.color} p-4 rounded-xl`}>
+                  <Icon className="h-6 w-6 text-white" />
+                </div>
+              </div>
+            </Card>
+          );
+        })}
       </div>
 
-      {activeTab === 'products' && (
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {products.map((product) => (
-                <tr key={product._id}>
-                  <td className="px-6 py-4 whitespace-nowrap">{product.name}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">{product.category}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">${product.price}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">{product.stock}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <Link
-                      href={`/admin/products/${product._id}`}
-                      className="text-blue-600 hover:text-blue-900"
-                    >
-                      Edit
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {/* Alerts */}
+      {(stats.lowStockProducts > 0 || stats.recentOrders > 0) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {stats.lowStockProducts > 0 && (
+            <Card className="bg-yellow-50 border-yellow-200">
+              <div className="flex items-center space-x-3">
+                <div className="bg-yellow-100 p-3 rounded-lg">
+                  <FaBox className="h-5 w-5 text-yellow-600" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-yellow-900">Low Stock Alert</h3>
+                  <p className="text-sm text-yellow-700">
+                    {stats.lowStockProducts} product{stats.lowStockProducts > 1 ? 's' : ''} running low on stock
+                  </p>
+                </div>
+              </div>
+            </Card>
+          )}
 
-      {activeTab === 'orders' && (
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order ID</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Items</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {orders.map((order) => (
-                <tr key={order._id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    #{order._id.slice(-6).toUpperCase()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">
-                      {order?.shippingInfo?.firstName} {order?.shippingInfo?.lastName}
-                    </div>
-                    <div className="text-sm text-gray-500">{order.user.email}</div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm text-gray-900">
-                      {order.items.map((item, index) => (
-                        <div key={index} className="mb-1">
-                          {item.quantity}x {item.product.name} ({item.size})
-                        </div>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">
-                      {new Date(order.createdAt).toLocaleDateString()}
-                    </div>
-                    <div className="text-sm text-gray-500">
-                      {new Date(order.createdAt).toLocaleTimeString()}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    ${order.totalAmount}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(order.status)}`}>
-                      {order.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <Link
-                      href={`/orders/${order._id}`}
-                      className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                    >
-                      View Details
-                      <svg className="ml-2 -mr-1 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {activeTab === 'users' && (
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {users.map((user) => (
-                <tr key={user._id}>
-                  <td className="px-6 py-4 whitespace-nowrap">{user.name}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">{user.email}</td>
-                  <td className="px-6 py-4 whitespace-nowrap capitalize">{user.role}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {stats.recentOrders > 0 && (
+            <Card className="bg-green-50 border-green-200">
+              <div className="flex items-center space-x-3">
+                <div className="bg-green-100 p-3 rounded-lg">
+                  <FaShoppingCart className="h-5 w-5 text-green-600" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-green-900">Recent Activity</h3>
+                  <p className="text-sm text-green-700">
+                    {stats.recentOrders} new order{stats.recentOrders > 1 ? 's' : ''} this week
+                  </p>
+                </div>
+              </div>
+            </Card>
+          )}
         </div>
       )}
     </div>

@@ -197,7 +197,7 @@ export default function ImageUpload({ images, onImagesChange }: ImageUploadProps
                             <button
                                 type="button"
                                 onClick={() => handleRemoveImage(index)}
-                                className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                                className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 cursor-pointer"
                                 title="Remove image"
                             >
                                 <svg

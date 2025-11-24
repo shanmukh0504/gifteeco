@@ -3,13 +3,16 @@ import connectDB from '@/lib/db';
 import Order from '@/models/Order';
 
 export async function GET(
-  request: Request,
-  { params }: { params: { id: string } }
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await connectDB();
-    const order = await Order.findById(params.id).populate('items.product');
-    
+    const { id } = await params;
+    const order = await Order.findById(id)
+      .populate('user', 'name email')
+      .populate('items.product');
+
     if (!order) {
       return NextResponse.json(
         { error: 'Order not found' },
