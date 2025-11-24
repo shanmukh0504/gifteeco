@@ -234,7 +234,9 @@ const useCustomizationStore = create<CustomizationState>((set, get) => ({
     try {
       const state = get();
       const productElements = state.elements[productId];
-      if (productElements) {
+      const productMergedImages = state.mergedImages[productId];
+
+      if (productElements || productMergedImages) {
         const saved = localStorage.getItem(`customization_${productId}`);
         let savedData: Record<string, unknown> = {};
         if (saved) {
@@ -245,14 +247,12 @@ const useCustomizationStore = create<CustomizationState>((set, get) => ({
           }
         }
 
-        const productMergedImages = state.mergedImages[productId];
-
         localStorage.setItem(
           `customization_${productId}`,
           JSON.stringify({
             ...savedData,
             productId,
-            elements: productElements,
+            elements: productElements || {},
             mergedImages: productMergedImages || {},
             timestamp: Date.now(),
           })
