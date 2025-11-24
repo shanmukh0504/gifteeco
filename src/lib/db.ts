@@ -6,6 +6,16 @@ if (!MONGODB_URI) {
   throw new Error('Please define the MONGODB_URI environment variable inside .env');
 }
 
+declare global {
+  // eslint-disable-next-line no-var
+  var mongoose: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    conn: any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    promise: Promise<any> | null;
+  } | undefined;
+}
+
 let cached = global.mongoose;
 
 if (!cached) {
@@ -13,6 +23,9 @@ if (!cached) {
 }
 
 async function connectDB() {
+  if (!cached) {
+    cached = global.mongoose = { conn: null, promise: null };
+  }
   if (cached.conn) {
     return cached.conn;
   }
