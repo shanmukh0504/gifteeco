@@ -22,7 +22,13 @@ export async function POST(req: Request) {
 
     const faqData = await req.json();
     await connectDB();
-    
+
+    // If order is not provided, set it to the max order + 1
+    if (faqData.order === undefined) {
+      const maxOrderFAQ = await FAQ.findOne().sort({ order: -1 });
+      faqData.order = maxOrderFAQ ? maxOrderFAQ.order + 1 : 0;
+    }
+
     const faq = await FAQ.create(faqData);
     return NextResponse.json(faq, { status: 201 });
   } catch (error) {

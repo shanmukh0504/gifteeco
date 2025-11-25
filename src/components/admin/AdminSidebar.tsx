@@ -1,22 +1,23 @@
-'use client';
-import React from 'react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { 
-  FaHome, 
-  FaBox, 
-  FaShoppingCart, 
-  FaUsers, 
-  FaChartLine, 
+"use client";
+import React from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import {
+  FaHome,
+  FaBox,
+  FaShoppingCart,
+  FaUsers,
+  FaChartLine,
   FaCog,
   FaSignOutAlt,
   FaStore,
-  FaTags
-} from 'react-icons/fa';
-import { cn } from '@/lib/utils';
-import useAuthStore from '@/store/useAuthStore';
-import useWishlistStore from '@/store/useWishlistStore';
-import useCartStore from '@/store/useCartStore';
+  FaTags,
+  FaQuestionCircle,
+} from "react-icons/fa";
+import { cn } from "@/lib/utils";
+import useAuthStore from "@/store/useAuthStore";
+import useWishlistStore from "@/store/useWishlistStore";
+import useCartStore from "@/store/useCartStore";
 
 interface NavItem {
   name: string;
@@ -25,13 +26,14 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { name: 'Dashboard', href: '/admin', icon: FaHome },
-  { name: 'Products', href: '/admin/products', icon: FaBox },
-  { name: 'Categories', href: '/admin/categories', icon: FaTags },
-  { name: 'Orders', href: '/admin/orders', icon: FaShoppingCart },
-  { name: 'Users', href: '/admin/users', icon: FaUsers },
-  { name: 'Analytics', href: '/admin/analytics', icon: FaChartLine },
-  { name: 'Settings', href: '/admin/settings', icon: FaCog },
+  { name: "Dashboard", href: "/admin", icon: FaHome },
+  { name: "Products", href: "/admin/products", icon: FaBox },
+  { name: "Categories", href: "/admin/categories", icon: FaTags },
+  { name: "Orders", href: "/admin/orders", icon: FaShoppingCart },
+  { name: "Users", href: "/admin/users", icon: FaUsers },
+  { name: "FAQs", href: "/admin/faq", icon: FaQuestionCircle },
+  { name: "Analytics", href: "/admin/analytics", icon: FaChartLine },
+  { name: "Settings", href: "/admin/settings", icon: FaCog },
 ];
 
 const AdminSidebar = () => {
@@ -56,7 +58,9 @@ const AdminSidebar = () => {
               <FaStore className="text-white text-lg" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-neutral-900">Admin Panel</h1>
+              <h1 className="text-lg font-bold text-neutral-900">
+                Admin Panel
+              </h1>
               <p className="text-xs text-neutral-500">Ecommerce Dashboard</p>
             </div>
           </Link>
@@ -66,17 +70,18 @@ const AdminSidebar = () => {
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
-            
+            const isActive =
+              pathname === item.href || pathname.startsWith(item.href + "/");
+
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  'flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200',
+                  "flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200",
                   isActive
-                    ? 'bg-[#FF9AA2] text-white shadow-md'
-                    : 'text-neutral-700 hover:bg-[#FFE5E7] hover:text-[#FF9AA2]'
+                    ? "bg-[#FF9AA2] text-white shadow-md"
+                    : "text-neutral-700 hover:bg-[#FFE5E7] hover:text-[#FF9AA2]"
                 )}
               >
                 <Icon className="h-5 w-5" />
@@ -109,4 +114,3 @@ const AdminSidebar = () => {
 };
 
 export default AdminSidebar;
-
