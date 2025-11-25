@@ -113,7 +113,15 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
 
   const cartSize = selectedSize || undefined;
   const cartColor = selectedColor !== "Gold" ? selectedColor : undefined;
-  const cartQuantity = getItemQuantity(product._id, cartSize, cartColor);
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  const cartQuantity = isMounted
+    ? getItemQuantity(product._id, cartSize, cartColor)
+    : 0;
   const isInCart = cartQuantity > 0;
   const [selectedQty, setSelectedQty] = useState<number | null>(
     quantityPresets[0]
