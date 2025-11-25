@@ -8,9 +8,6 @@ import { toast } from "sonner";
 import useCartStore from "@/store/useCartStore";
 import useAuthStore from "@/store/useAuthStore";
 import useWishlistStore from "@/store/useWishlistStore";
-import useCustomizationStore, {
-  DesignElement,
-} from "@/store/useCustomizationStore";
 import AuthModal from "@/components/auth/AuthModal";
 import Modal from "@/components/ui/Modal";
 import {
@@ -19,6 +16,26 @@ import {
   DEFAULT_BOUNDING_BOXES,
   BoundingBox,
 } from "@/constants/customization";
+
+type DesignElement = {
+  id: string;
+  type: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation?: number;
+  zIndex?: number;
+  textValue?: string;
+  textColor?: string;
+  fontSize?: number;
+  fontFamily?: string;
+  imageData?: string;
+  qrValue?: string;
+  shapeType?: string;
+  shapeColor?: string;
+  [key: string]: unknown;
+};
 
 type PrintLocation = {
   slot: SlotKey;
@@ -111,6 +128,109 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
   >({});
   const [showShareDropdown, setShowShareDropdown] = useState(false);
 
+  const createCompositeImage = useCallback(
+    async (elements: DesignElement[]): Promise<string | null> => {
+      if (elements.length === 0) return null;
+
+      const canvas = document.createElement("canvas");
+      const canvasSize = 800;
+      canvas.width = canvasSize;
+      canvas.height = canvasSize;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return null;
+
+      ctx.clearRect(0, 0, canvasSize, canvasSize);
+
+      const customizerImageWidth = 640;
+      const scaleFactor = canvasSize / customizerImageWidth;
+
+      const sortedElements = [...elements].sort(
+        (a, b) => (a.zIndex || 0) - (b.zIndex || 0)
+      );
+
+      for (const element of sortedElements) {
+        const x = (element.x / 100) * canvasSize;
+        const y = (element.y / 100) * canvasSize;
+        const width = (element.width / 100) * canvasSize;
+        const height = (element.height / 100) * canvasSize;
+        const rotation = element.rotation || 0;
+
+        ctx.save();
+        ctx.translate(x + width / 2, y + height / 2);
+        ctx.rotate((rotation * Math.PI) / 180);
+        ctx.translate(-(x + width / 2), -(y + height / 2));
+
+        if (element.type === "text" && element.textValue) {
+          ctx.fillStyle = element.textColor || "#000000";
+          const scaledFontSize = (element.fontSize || 24) * scaleFactor;
+          ctx.font = `${scaledFontSize}px ${element.fontFamily || "Arial"}`;
+          ctx.textAlign = "left";
+          ctx.textBaseline = "top";
+          const words = element.textValue.split(" ");
+          let line = "";
+          let lineY = y;
+          for (let n = 0; n < words.length; n++) {
+            const testLine = line + words[n] + " ";
+            const metrics = ctx.measureText(testLine);
+            if (metrics.width > width && n > 0) {
+              ctx.fillText(line, x, lineY);
+              line = words[n] + " ";
+              lineY += scaledFontSize;
+            } else {
+              line = testLine;
+            }
+          }
+          ctx.fillText(line, x, lineY);
+        } else if (element.type === "logo" && element.imageData) {
+          const img = document.createElement("img");
+          await new Promise<void>((resolve, reject) => {
+            img.onload = () => {
+              ctx.drawImage(img, x, y, width, height);
+              resolve();
+            };
+            img.onerror = () => reject(new Error("Failed to load image"));
+            img.src = element.imageData || "";
+          });
+        } else if (element.type === "qrcode" && element.qrValue) {
+          ctx.fillStyle = "#000000";
+          ctx.fillRect(x, y, width, height);
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "12px Arial";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText("QR", x + width / 2, y + height / 2);
+        } else if (element.type === "shape") {
+          ctx.fillStyle = element.shapeColor || "#000000";
+          if (element.shapeType === "circle") {
+            ctx.beginPath();
+            ctx.arc(
+              x + width / 2,
+              y + height / 2,
+              Math.min(width, height) / 2,
+              0,
+              2 * Math.PI
+            );
+            ctx.fill();
+          } else if (element.shapeType === "triangle") {
+            ctx.beginPath();
+            ctx.moveTo(x + width / 2, y);
+            ctx.lineTo(x, y + height);
+            ctx.lineTo(x + width, y + height);
+            ctx.closePath();
+            ctx.fill();
+          } else {
+            ctx.fillRect(x, y, width, height);
+          }
+        }
+
+        ctx.restore();
+      }
+
+      return canvas.toDataURL("image/png");
+    },
+    []
+  );
+
   useEffect(() => {
     const count = product.ratingsSummary?.count ?? 0;
     if (count > 0) {
@@ -131,121 +251,57 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
     }
   }, [product._id, product.ratingsSummary?.count]);
 
-  const { getMergedImage, saveMergedImage, clearMergedImage, loadFromStorage } =
-    useCustomizationStore();
-
-  const getBoundingBox = useCallback(
-    (slot: SlotKey): BoundingBox => {
-      return product.customDefaults?.[slot] ?? DEFAULT_BOUNDING_BOXES[slot];
-    },
-    [product.customDefaults]
-  );
-
-  // Sync printLocations with merged images only
-  const syncPrintLocations = useCallback(async () => {
-    loadFromStorage(product._id);
-    const locations: PrintLocation[] = [];
-
-    // Only get merged images - no element rendering
-    for (const slot of ["front", "back", "chest"] as SlotKey[]) {
-      const mergedImage = getMergedImage(product._id, selectedColor, slot);
-      if (mergedImage) {
-        locations.push({
-          slot,
-          uploadedImage: mergedImage,
-        });
-      }
-    }
-    setPrintLocations(locations);
-    return locations;
-  }, [product._id, selectedColor, getMergedImage, loadFromStorage]);
-
-  const syncInProgressRef = useRef(false);
-  const lastSyncedColorRef = useRef<string | null>(null);
-  const lastSyncedProductIdRef = useRef<string | null>(null);
-
-  // Load saved design from customize page and sync with store
+  // Load saved design from customize page
   useEffect(() => {
-    // Only sync if product ID changed or it's the first load
-    if (
-      lastSyncedProductIdRef.current === product._id &&
-      !searchParams.get("customized")
-    ) {
-      return;
-    }
-
-    if (syncInProgressRef.current) return;
-
-    syncInProgressRef.current = true;
-    lastSyncedProductIdRef.current = product._id;
-    let isMounted = true;
-
     const loadDesign = async () => {
-      try {
-        const customized = searchParams.get("customized");
-        const locations = await syncPrintLocations();
-
-        if (isMounted && locations.length > 0 && customized === "true") {
-          toast.success("Your design has been loaded!");
+      const customized = searchParams.get("customized");
+      if (customized === "true") {
+        const savedDesign = localStorage.getItem(
+          `customization_${product._id}`
+        );
+        if (savedDesign) {
+          try {
+            const designData = JSON.parse(savedDesign);
+            if (designData.elements) {
+              const colorKey = designData.selectedColor || selectedColor;
+              const colorElements = designData.elements[colorKey];
+              if (colorElements) {
+                const locations: PrintLocation[] = [];
+                for (const slot of ["front", "back", "chest"] as SlotKey[]) {
+                  const slotElements = colorElements[slot];
+                  if (slotElements && slotElements.length > 0) {
+                    const compositeImage = await createCompositeImage(
+                      slotElements
+                    );
+                    if (compositeImage) {
+                      locations.push({
+                        slot,
+                        uploadedImage: compositeImage,
+                        elements: slotElements, // Store elements for reference
+                      });
+                    }
+                  }
+                }
+                if (locations.length > 0) {
+                  setPrintLocations(locations);
+                  toast.success("Your design has been loaded!");
+                }
+              }
+            }
+          } catch (error) {
+            console.error("Error loading saved design:", error);
+          }
         }
-      } finally {
-        syncInProgressRef.current = false;
       }
     };
-
     loadDesign();
-
-    // Listen for storage changes to sync in real-time (only from other tabs)
-    const handleStorageChange = async (e: StorageEvent) => {
-      if (
-        e.key === `customization_${product._id}` &&
-        e.newValue &&
-        isMounted &&
-        !syncInProgressRef.current
-      ) {
-        syncInProgressRef.current = true;
-        try {
-          await syncPrintLocations();
-        } finally {
-          syncInProgressRef.current = false;
-        }
-      }
-    };
-
-    window.addEventListener("storage", handleStorageChange);
-    return () => {
-      isMounted = false;
-      window.removeEventListener("storage", handleStorageChange);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [product._id, searchParams.get("customized")]);
-
-  // Sync when color changes
-  useEffect(() => {
-    // Only sync if color actually changed
-    if (lastSyncedColorRef.current === selectedColor) {
-      return;
-    }
-
-    if (syncInProgressRef.current) return;
-
-    syncInProgressRef.current = true;
-    lastSyncedColorRef.current = selectedColor;
-
-    const timeoutId = setTimeout(async () => {
-      try {
-        await syncPrintLocations();
-      } finally {
-        syncInProgressRef.current = false;
-      }
-    }, 100);
-
-    return () => {
-      clearTimeout(timeoutId);
-      syncInProgressRef.current = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedColor]);
+  }, [
+    product._id,
+    searchParams,
+    selectedColor,
+    product.customDefaults,
+    createCompositeImage,
+  ]);
 
   const imageWrapRef = useRef<HTMLDivElement | null>(null);
   const [isMagnifying, setIsMagnifying] = useState(false);
@@ -335,69 +391,11 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
         throw new Error("Upload failed");
       }
 
-      // Create a merged image that covers the entire bounding box
-      const location = printLocations[index];
-      if (location) {
-        // Read the uploaded image
-        const reader = new FileReader();
-        reader.onload = async () => {
-          const uploadedImageData = reader.result as string;
-
-          // Get bounding box dimensions
-          const box = getBoundingBox(location.slot);
-          const imageWidth = 640; // Base image width
-          const imageHeight = 800; // Base image height
-          const boxWidth = box.width * imageWidth;
-          const boxHeight = box.height * imageHeight;
-
-          // Create canvas and draw uploaded image to cover entire bounding box
-          const canvas = document.createElement("canvas");
-          const scale = 2; // High resolution
-          canvas.width = boxWidth * scale;
-          canvas.height = boxHeight * scale;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) {
-            toast.error("Failed to process image");
-            setUploadingImages((prev) => ({ ...prev, [index]: false }));
-            return;
-          }
-
-          ctx.scale(scale, scale);
-
-          // Load and draw the uploaded image to cover the entire box
-          const img = document.createElement("img");
-          await new Promise<void>((resolve, reject) => {
-            img.onload = () => {
-              // Draw image to cover entire bounding box (stretch to fit)
-              ctx.drawImage(img, 0, 0, boxWidth, boxHeight);
-              resolve();
-            };
-            img.onerror = () => reject(new Error("Failed to load image"));
-            img.src = uploadedImageData;
-          });
-
-          // Convert canvas to base64 image
-          const mergedImage = canvas.toDataURL("image/png");
-
-          // Save merged image to store
-          saveMergedImage(
-            product._id,
-            selectedColor,
-            location.slot,
-            mergedImage
-          );
-
-          // Update printLocations
-          const updated = [...printLocations];
-          updated[index] = {
-            ...updated[index],
-            uploadedImage: mergedImage,
-          };
-          setPrintLocations(updated);
-          toast.success("Image uploaded successfully!");
-        };
-        reader.readAsDataURL(file);
-      }
+      const data = await response.json();
+      const updated = [...printLocations];
+      updated[index] = { ...updated[index], uploadedImage: data.url };
+      setPrintLocations(updated);
+      toast.success("Image uploaded successfully!");
     } catch (error) {
       console.error("Error uploading image:", error);
       toast.error("Failed to upload image");
@@ -407,17 +405,14 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
   };
 
   const handleDeleteImage = (index: number) => {
-    const location = printLocations[index];
-    if (location) {
-      // Clear merged image from store
-      clearMergedImage(product._id, selectedColor, location.slot);
+    const updated = [...printLocations];
+    updated[index] = { ...updated[index], uploadedImage: undefined };
+    setPrintLocations(updated);
+    toast.success("Image removed");
+  };
 
-      // Remove from printLocations
-      const updated = [...printLocations];
-      updated.splice(index, 1);
-      setPrintLocations(updated);
-      toast.success("Image removed");
-    }
+  const getBoundingBox = (slot: SlotKey): BoundingBox => {
+    return product.customDefaults?.[slot] ?? DEFAULT_BOUNDING_BOXES[slot];
   };
 
   const getMockupImage = (slot: SlotKey): string | undefined => {
@@ -815,20 +810,18 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                           className="object-cover"
                         />
                         <div
-                          className="absolute bg-white/5 backdrop-blur-sm"
+                          className="absolute border-2 border-dashed border-[#c86446]/70 bg-white/5 backdrop-blur-sm"
                           style={{
                             left: `${box.x * 100}%`,
                             top: `${box.y * 100}%`,
                             width: `${box.width * 100}%`,
                             height: `${box.height * 100}%`,
-                            overflow: "hidden",
                           }}
                         >
                           <img
                             src={location.uploadedImage}
                             alt="uploaded design"
                             className="h-full w-full object-contain"
-                            style={{ imageRendering: "auto" }}
                           />
                         </div>
                         <button
@@ -882,9 +875,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
               {printLocations.length > 0 && (
                 <div className="pt-2">
                   <Link
-                    href={`/product/customize/${
-                      product._id
-                    }?color=${encodeURIComponent(selectedColor)}`}
+                    href={`/product/customize/${product._id}`}
                     className="flex w-full items-center justify-center rounded-2xl bg-[#c86446] px-6 py-3 text-center text-white text-sm shadow shadow-[#c86446]/30 transition hover:bg-[#ba5839]"
                   >
                     Sketch your image
@@ -1013,6 +1004,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                     printLocations:
                       printLocations.length > 0 ? printLocations : undefined,
                     printSize: selectedPrintSize,
+                    elements: savedDesign?.elements || undefined,
                     sketchedImage: savedDesign ? true : undefined,
                   };
                 }

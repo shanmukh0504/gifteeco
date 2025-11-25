@@ -3,17 +3,13 @@
 import { useMemo, useState, useRef, useCallback, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   BoundingBox,
   DEFAULT_BOUNDING_BOXES,
   SlotKey,
 } from "@/constants/customization";
 import { toast } from "sonner";
-import useCustomizationStore, {
-  DesignElement,
-  ElementType,
-} from "@/store/useCustomizationStore";
 
 type SlotCustomization = {
   enabled?: boolean;
@@ -42,6 +38,31 @@ type ProductData = {
   customDefaults?: Record<SlotKey, BoundingBox>;
 };
 
+type ElementType = "text" | "logo" | "qrcode" | "shape";
+
+type DesignElement = {
+  id: string;
+  type: ElementType;
+  x: number; // percentage within bounding box
+  y: number; // percentage within bounding box
+  width: number; // percentage
+  height: number; // percentage
+  rotation: number;
+  zIndex: number;
+  // Text specific
+  textValue?: string;
+  fontFamily?: string;
+  fontSize?: number;
+  textColor?: string;
+  // Image/Logo specific
+  imageData?: string;
+  // QR Code specific
+  qrValue?: string;
+  // Shape specific
+  shapeType?: "circle" | "square" | "triangle";
+  shapeColor?: string;
+};
+
 const SLOT_KEYS: SlotKey[] = ["front", "back", "chest"];
 
 const FONT_OPTIONS = [
@@ -57,17 +78,6 @@ interface ProductCustomizerProps {
 
 export default function ProductCustomizer({ product }: ProductCustomizerProps) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const {
-    getElements,
-    saveElements,
-    removeElement: removeElementFromStore,
-    updateElement: updateElementInStore,
-    saveMergedImage,
-    clearMergedImage,
-    loadFromStorage,
-  } = useCustomizationStore();
-
   const colorEntries = useMemo(() => {
     if (product.hasColorOptions && product.colors) {
       return Object.entries(product.colors);
@@ -75,15 +85,26 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
     return [["default", product.noColor || {}]];
   }, [product]);
 
-  // Get color from URL params if provided
-  const urlColor = searchParams.get("color");
-  const initialColor =
-    urlColor && colorEntries.find(([key]) => key === urlColor)?.[0]
-      ? urlColor
-      : (colorEntries[0]?.[0] as string) ?? "default";
-
-  const [selectedColor, setSelectedColor] = useState<string>(initialColor);
+  const [selectedColor, setSelectedColor] = useState<string>(
+    (colorEntries[0]?.[0] as string) ?? "default"
+  );
   const [selectedSlot] = useState<SlotKey>("front");
+  const [elements, setElements] = useState<
+    Record<string, Record<SlotKey, DesignElement[]>>
+  >(() =>
+    Object.fromEntries(
+      colorEntries.map(([key]) => [
+        key,
+        SLOT_KEYS.reduce(
+          (slotAcc, slot) => ({
+            ...slotAcc,
+            [slot]: [],
+          }),
+          {} as Record<SlotKey, DesignElement[]>
+        ),
+      ])
+    )
+  );
   const [selectedElementId, setSelectedElementId] = useState<string | null>(
     null
   );
@@ -113,32 +134,6 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
   const previewRef = useRef<HTMLDivElement>(null);
   const boundingBoxRef = useRef<HTMLDivElement>(null);
 
-  // Load from storage on mount and handle uploaded images from ProductDetailView
-  useEffect(() => {
-    loadFromStorage(product._id);
-
-    // Check if there are uploaded images in printLocations that need to be converted to elements
-    const checkForUploadedImages = async () => {
-      try {
-        const savedDesign = localStorage.getItem(
-          `customization_${product._id}`
-        );
-        if (savedDesign) {
-          const designData = JSON.parse(savedDesign);
-          // If we have elements, they're already loaded by loadFromStorage
-          // If we have printLocations with uploadedImage but no elements, convert them
-          if (designData.printLocations && !designData.elements) {
-            // This case is handled by the store now, but we can check for any orphaned images
-          }
-        }
-      } catch (error) {
-        console.error("Error checking for uploaded images:", error);
-      }
-    };
-
-    checkForUploadedImages();
-  }, [product._id, loadFromStorage]);
-
   const activeColor =
     colorEntries.find(([key]) => key === selectedColor)?.[1] ??
     colorEntries[0][1];
@@ -158,7 +153,7 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
     product.customDefaults?.[selectedSlot] ??
     DEFAULT_BOUNDING_BOXES[selectedSlot];
 
-  const currentElements = getElements(product._id, selectedColor, selectedSlot);
+  const currentElements = elements[selectedColor]?.[selectedSlot] ?? [];
   const selectedElement =
     currentElements.find((el) => el.id === selectedElementId) ?? null;
 
@@ -173,163 +168,6 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
 
   const generateId = () =>
     `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-  // Function to measure text dimensions and calculate required size
-  const measureTextDimensions = useCallback(
-    (
-      text: string,
-      fontSize: number,
-      fontFamily: string,
-      boundingBoxWidth: number, // Actual pixel width of bounding box
-      boundingBoxHeight: number // Actual pixel height of bounding box
-    ): { width: number; height: number } => {
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return { width: 30, height: 30 };
-
-      ctx.font = `${fontSize}px ${fontFamily}`;
-      const lines = text.split("\n");
-      let maxLineWidth = 0;
-      let totalHeight = 0;
-      const lineHeight = fontSize * 1.2; // Line height multiplier
-
-      for (const line of lines) {
-        if (line.trim() === "") {
-          totalHeight += lineHeight;
-          continue;
-        }
-
-        // Measure the line
-        const metrics = ctx.measureText(line);
-        const lineWidth = metrics.width;
-        maxLineWidth = Math.max(maxLineWidth, lineWidth);
-        totalHeight += lineHeight;
-      }
-
-      // Convert pixel measurements to percentages of the bounding box
-      // Add padding (5% on each side)
-      const padding = 5;
-      const requiredWidthPercent = Math.min(
-        95,
-        Math.max(10, (maxLineWidth / boundingBoxWidth) * 100 + padding)
-      );
-      const requiredHeightPercent = Math.min(
-        95,
-        Math.max(10, (totalHeight / boundingBoxHeight) * 100 + padding)
-      );
-
-      return {
-        width: requiredWidthPercent,
-        height: requiredHeightPercent,
-      };
-    },
-    []
-  );
-
-  // Function to render bounding box content to canvas
-  const renderBoundingBoxToCanvas = async (
-    elements: DesignElement[],
-    boxWidth: number,
-    boxHeight: number
-  ): Promise<string | null> => {
-    if (elements.length === 0) return null;
-
-    const canvas = document.createElement("canvas");
-    const scale = 2; // High resolution
-    canvas.width = boxWidth * scale;
-    canvas.height = boxHeight * scale;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-
-    ctx.scale(scale, scale);
-    ctx.clearRect(0, 0, boxWidth, boxHeight);
-
-    // Sort by zIndex
-    const sortedElements = [...elements].sort(
-      (a, b) => (a.zIndex || 0) - (b.zIndex || 0)
-    );
-
-    for (const element of sortedElements) {
-      const x = (element.x / 100) * boxWidth;
-      const y = (element.y / 100) * boxHeight;
-      const width = (element.width / 100) * boxWidth;
-      const height = (element.height / 100) * boxHeight;
-      const rotation = element.rotation || 0;
-
-      ctx.save();
-      ctx.translate(x + width / 2, y + height / 2);
-      ctx.rotate((rotation * Math.PI) / 180);
-      ctx.translate(-(x + width / 2), -(y + height / 2));
-
-      if (element.type === "text" && element.textValue) {
-        ctx.fillStyle = element.textColor || "#000000";
-        ctx.font = `${element.fontSize || 24}px ${
-          element.fontFamily || "Arial"
-        }`;
-        ctx.textAlign = "left";
-        ctx.textBaseline = "top";
-        const words = element.textValue.split(" ");
-        let line = "";
-        let lineY = y;
-        for (let n = 0; n < words.length; n++) {
-          const testLine = line + words[n] + " ";
-          const metrics = ctx.measureText(testLine);
-          if (metrics.width > width && n > 0) {
-            ctx.fillText(line, x, lineY);
-            line = words[n] + " ";
-            lineY += element.fontSize || 24;
-          } else {
-            line = testLine;
-          }
-        }
-        ctx.fillText(line, x, lineY);
-      } else if (element.type === "logo" && element.imageData) {
-        const img = document.createElement("img");
-        await new Promise<void>((resolve, reject) => {
-          img.onload = () => {
-            ctx.drawImage(img, x, y, width, height);
-            resolve();
-          };
-          img.onerror = () => reject(new Error("Failed to load image"));
-          img.src = element.imageData || "";
-        });
-      } else if (element.type === "qrcode" && element.qrValue) {
-        ctx.fillStyle = "#000000";
-        ctx.fillRect(x, y, width, height);
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "12px Arial";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("QR", x + width / 2, y + height / 2);
-      } else if (element.type === "shape") {
-        ctx.fillStyle = element.shapeColor || "#000000";
-        if (element.shapeType === "circle") {
-          ctx.beginPath();
-          ctx.arc(
-            x + width / 2,
-            y + height / 2,
-            Math.min(width, height) / 2,
-            0,
-            2 * Math.PI
-          );
-          ctx.fill();
-        } else if (element.shapeType === "triangle") {
-          ctx.beginPath();
-          ctx.moveTo(x + width / 2, y);
-          ctx.lineTo(x, y + height);
-          ctx.lineTo(x + width, y + height);
-          ctx.closePath();
-          ctx.fill();
-        } else {
-          ctx.fillRect(x, y, width, height);
-        }
-      }
-
-      ctx.restore();
-    }
-
-    return canvas.toDataURL("image/png");
-  };
 
   const addElement = (type: ElementType) => {
     const newElement: DesignElement = {
@@ -350,10 +188,13 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
       shapeColor: type === "shape" ? "#000000" : undefined,
     };
 
-    saveElements(product._id, selectedColor, selectedSlot, [
-      ...currentElements,
-      newElement,
-    ]);
+    setElements((prev) => ({
+      ...prev,
+      [selectedColor]: {
+        ...prev[selectedColor],
+        [selectedSlot]: [...currentElements, newElement],
+      },
+    }));
 
     setSelectedElementId(newElement.id);
     setActivePanel(type);
@@ -361,7 +202,13 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
   };
 
   const removeElement = (id: string) => {
-    removeElementFromStore(product._id, selectedColor, selectedSlot, id);
+    setElements((prev) => ({
+      ...prev,
+      [selectedColor]: {
+        ...prev[selectedColor],
+        [selectedSlot]: currentElements.filter((el) => el.id !== id),
+      },
+    }));
     if (selectedElementId === id) {
       setSelectedElementId(null);
       setActivePanel(null);
@@ -370,7 +217,15 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
   };
 
   const updateElement = (id: string, updates: Partial<DesignElement>) => {
-    updateElementInStore(product._id, selectedColor, selectedSlot, id, updates);
+    setElements((prev) => ({
+      ...prev,
+      [selectedColor]: {
+        ...prev[selectedColor],
+        [selectedSlot]: currentElements.map((el) =>
+          el.id === id ? { ...el, ...updates } : el
+        ),
+      },
+    }));
   };
 
   const bringToFront = (id: string) => {
@@ -911,36 +766,11 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
               </label>
               <textarea
                 value={selectedElement.textValue || ""}
-                onChange={(e) => {
-                  const newText = e.target.value;
-
-                  // Measure text and auto-resize
-                  if (boundingBoxRef.current) {
-                    const rect = boundingBoxRef.current.getBoundingClientRect();
-                    const boxWidth = rect.width;
-                    const boxHeight = rect.height;
-
-                    const dimensions = measureTextDimensions(
-                      newText,
-                      selectedElement.fontSize || 24,
-                      selectedElement.fontFamily || "Arial",
-                      boxWidth,
-                      boxHeight
-                    );
-
-                    // Update element with new text and dimensions
-                    updateElement(selectedElement.id, {
-                      textValue: newText,
-                      width: dimensions.width,
-                      height: dimensions.height,
-                    });
-                  } else {
-                    // Fallback if bounding box ref not available
-                    updateElement(selectedElement.id, {
-                      textValue: newText,
-                    });
-                  }
-                }}
+                onChange={(e) =>
+                  updateElement(selectedElement.id, {
+                    textValue: e.target.value,
+                  })
+                }
                 rows={3}
                 className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
@@ -950,29 +780,11 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
                 <label className="text-sm text-neutral-600">Font</label>
                 <select
                   value={selectedElement.fontFamily || "Mogra, cursive"}
-                  onChange={(e) => {
-                    const newFontFamily = e.target.value;
+                  onChange={(e) =>
                     updateElement(selectedElement.id, {
-                      fontFamily: newFontFamily,
-                    });
-
-                    // Auto-resize text when font changes
-                    if (boundingBoxRef.current && selectedElement.textValue) {
-                      const rect =
-                        boundingBoxRef.current.getBoundingClientRect();
-                      const dimensions = measureTextDimensions(
-                        selectedElement.textValue,
-                        selectedElement.fontSize || 24,
-                        newFontFamily,
-                        rect.width,
-                        rect.height
-                      );
-                      updateElement(selectedElement.id, {
-                        width: dimensions.width,
-                        height: dimensions.height,
-                      });
-                    }
-                  }}
+                      fontFamily: e.target.value,
+                    })
+                  }
                   className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
                 >
                   {FONT_OPTIONS.map((font) => (
@@ -1004,29 +816,11 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
                   min="12"
                   max="72"
                   value={selectedElement.fontSize || 24}
-                  onChange={(e) => {
-                    const newFontSize = Number(e.target.value);
+                  onChange={(e) =>
                     updateElement(selectedElement.id, {
-                      fontSize: newFontSize,
-                    });
-
-                    // Auto-resize text when font size changes
-                    if (boundingBoxRef.current && selectedElement.textValue) {
-                      const rect =
-                        boundingBoxRef.current.getBoundingClientRect();
-                      const dimensions = measureTextDimensions(
-                        selectedElement.textValue,
-                        newFontSize,
-                        selectedElement.fontFamily || "Arial",
-                        rect.width,
-                        rect.height
-                      );
-                      updateElement(selectedElement.id, {
-                        width: dimensions.width,
-                        height: dimensions.height,
-                      });
-                    }
-                  }}
+                      fontSize: Number(e.target.value),
+                    })
+                  }
                   className="mt-1 w-full"
                 />
               </div>
@@ -1381,10 +1175,13 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
                       zIndex: currentElements.length,
                       imageData: reader.result as string,
                     };
-                    saveElements(product._id, selectedColor, selectedSlot, [
-                      ...currentElements,
-                      newElement,
-                    ]);
+                    setElements((prev) => ({
+                      ...prev,
+                      [selectedColor]: {
+                        ...prev[selectedColor],
+                        [selectedSlot]: [...currentElements, newElement],
+                      },
+                    }));
                     setSelectedElementId(newElement.id);
                     setActivePanel("logo");
                     toast.success("Image uploaded!");
@@ -1505,55 +1302,18 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
 
         {/* Save and Proceed Button */}
         <button
-          onClick={async () => {
-            // Capture bounding box content as ONE merged image for all slots
-            // Use the image dimensions (640px width) to calculate bounding box size
-            const imageWidth = 640; // Base image width in customizer
-            const imageHeight = 800; // Base image height in customizer
-
-            try {
-              // Render all slots and save as merged images
-              for (const slot of SLOT_KEYS) {
-                const slotElements = getElements(
-                  product._id,
-                  selectedColor,
-                  slot
-                );
-                if (slotElements.length > 0) {
-                  const slotBox =
-                    product.customDefaults?.[slot] ??
-                    DEFAULT_BOUNDING_BOXES[slot];
-                  const boxWidth = slotBox.width * imageWidth;
-                  const boxHeight = slotBox.height * imageHeight;
-
-                  // Render entire bounding box as one merged image
-                  const mergedImage = await renderBoundingBoxToCanvas(
-                    slotElements,
-                    boxWidth,
-                    boxHeight
-                  );
-
-                  if (mergedImage) {
-                    // Save merged image to store (for ProductDetailView to display)
-                    // Keep elements in store for continued editing in ProductCustomizer
-                    saveMergedImage(
-                      product._id,
-                      selectedColor,
-                      slot,
-                      mergedImage
-                    );
-                  }
-                } else {
-                  // If no elements, clear any existing merged image
-                  clearMergedImage(product._id, selectedColor, slot);
-                }
-              }
-            } catch (error) {
-              console.error("Error capturing merged image:", error);
-              toast.error("Failed to save design");
-              return;
-            }
-
+          onClick={() => {
+            // Save the design to localStorage with product ID
+            const designData = {
+              productId: product._id,
+              selectedColor,
+              elements,
+              timestamp: Date.now(),
+            };
+            localStorage.setItem(
+              `customization_${product._id}`,
+              JSON.stringify(designData)
+            );
             toast.success("Design saved!");
             // Redirect to product detail page
             router.push(`/product/${product._id}?customized=true`);
