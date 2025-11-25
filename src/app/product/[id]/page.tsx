@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import connectDB from "@/lib/db";
 import Product from "@/models/Product";
+import Category from "@/models/Category";
 import ProductDetailView from "@/components/product/ProductDetailView";
 
 type Params = {
@@ -8,23 +9,30 @@ type Params = {
 };
 
 export default async function ProductPage({ params }: Params) {
-  const { id } = await params;
-  await connectDB();
+  try {
+    const { id } = await params;
+    await connectDB();
 
-  const productDoc = await Product.findById(id)
-    .populate("category", "name")
-    .lean();
+    // Import Category to ensure it's registered before populate
+    void Category;
 
-  if (!productDoc) {
+    const productDoc = await Product.findById(id)
+      .populate("category", "name")
+      .lean();
+
+    if (!productDoc) {
+      notFound();
+    }
+
+    const product = JSON.parse(JSON.stringify(productDoc));
+
+    return (
+      <div className="mx-auto max-w-7xl px-4 py-12 md:px-6">
+        <ProductDetailView product={product} />
+      </div>
+    );
+  } catch (error) {
+    console.error("Error loading product:", error);
     notFound();
   }
-
-  const product = JSON.parse(JSON.stringify(productDoc));
-
-  return (
-    <div className="mx-auto max-w-7xl px-4 py-12 md:px-6">
-      <ProductDetailView product={product} />
-    </div>
-  );
 }
-
