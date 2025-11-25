@@ -1,6 +1,8 @@
 import HeroBanner from "@/components/landing/HeroBanner";
 import ValueProps from "@/components/landing/ValueProps";
 import ProductShowcase from "@/components/landing/ProductShowcase";
+import AboutSection from "@/components/landing/AboutSection";
+import FAQSection from "@/components/landing/FAQSection";
 
 export default function HomePage() {
   return (
@@ -9,6 +11,8 @@ export default function HomePage() {
         <HeroBanner />
         <ValueProps />
         <ProductShowcase />
+        <AboutSection />
+        <FAQSection />
         <div id="contact" className="sr-only" aria-hidden />
       </div>
     </div>

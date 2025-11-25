@@ -305,10 +305,12 @@ function Row({ title, products }: { title: string; products: ProductDoc[] }) {
 
 export default function ProductShowcase() {
   const [data, setData] = useState<LandingPayload | null>(null);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] =
     useState<(typeof tabs)[number]["key"]>("all");
 
   useEffect(() => {
+    setLoading(true);
     fetch("/api/catalogue/landing")
       .then((r) => r.json())
       .then((j) => {
@@ -347,6 +349,9 @@ export default function ProductShowcase() {
             welcomeKits: [],
           },
         });
+      })
+      .finally(() => {
+        setLoading(false);
       });
   }, []);
 
@@ -354,6 +359,63 @@ export default function ProductShowcase() {
     if (!data || !data.tabs) return [];
     return data.tabs[activeTab] ?? [];
   }, [data, activeTab]);
+
+  if (loading) {
+    return (
+      <div className="bg-neutral-50">
+        <section className="mx-auto w-full max-w-6xl px-4 py-12">
+          <div className="mb-6 h-8 w-32 bg-neutral-200 rounded mx-auto animate-pulse" />
+          <div className="mb-8 flex justify-center gap-6">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div
+                key={i}
+                className="h-5 w-20 bg-neutral-200 rounded animate-pulse"
+              />
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="group relative animate-pulse">
+                <div className="relative aspect-[4/5] w-full overflow-hidden rounded-2xl bg-neutral-200" />
+                <div className="mt-3 space-y-2">
+                  <div className="h-4 w-3/4 rounded bg-neutral-200" />
+                  <div className="flex items-center justify-between">
+                    <div className="h-4 w-16 rounded bg-neutral-200" />
+                    <div className="h-10 w-10 rounded-lg bg-neutral-200" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+        {[1, 2].map((row) => (
+          <section key={row} className="mx-auto w-full max-w-6xl px-4 py-8">
+            <div className="mb-6 flex items-center justify-between">
+              <div className="h-6 w-32 bg-neutral-200 rounded animate-pulse" />
+              <div className="flex gap-2">
+                <div className="h-10 w-10 rounded-full bg-neutral-200 animate-pulse" />
+                <div className="h-10 w-10 rounded-full bg-neutral-200 animate-pulse" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="group relative animate-pulse">
+                  <div className="relative aspect-[4/5] w-full overflow-hidden rounded-2xl bg-neutral-200" />
+                  <div className="mt-3 space-y-2">
+                    <div className="h-4 w-3/4 rounded bg-neutral-200" />
+                    <div className="flex items-center justify-between">
+                      <div className="h-4 w-16 rounded bg-neutral-200" />
+                      <div className="h-10 w-10 rounded-lg bg-neutral-200" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    );
+  }
 
   if (!data || !data.tabs || !data.sections) return null;
 
