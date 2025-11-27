@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 
 export default function AdminSettingsPage() {
   const [settings, setSettings] = useState({
-    storeName: 'Dappers Dress Code',
+    storeName: 'Gifteeco',
     storeEmail: 'admin@dappers.com',
     storePhone: '+1 234 567 8900',
     storeAddress: '123 Main Street, City, State 12345',

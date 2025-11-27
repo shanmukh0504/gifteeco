@@ -62,12 +62,12 @@ export async function GET() {
 
     const materialSet = new Set<string>();
     products.forEach((product) => {
-        const productData = product as unknown as ProductDoc;
+      const productData = product as unknown as ProductDoc;
       if (productData.material) {
         const material = typeof productData.material === 'string'
           ? productData.material.trim()
           : String(productData.material).trim();
-        if (material) {
+        if (material && material !== 'null' && material !== 'undefined') {
           materialSet.add(material);
         }
       }

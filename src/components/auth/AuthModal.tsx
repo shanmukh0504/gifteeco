@@ -19,18 +19,27 @@ export default function AuthModal({
   initialMode = "login",
 }: AuthModalProps) {
   const loginStore = useAuthStore((state) => state.login);
-  const [mode, setMode] = useState<"login" | "signup">(initialMode);
+  const [mode, setMode] = useState<"login" | "signup" | "forgotPassword">(
+    initialMode
+  );
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
   const [signupForm, setSignupForm] = useState({
     name: "",
     email: "",
     password: "",
   });
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
+  const [forgotPasswordSent, setForgotPasswordSent] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     setMode(initialMode);
-  }, [initialMode]);
+    // Reset forgot password state when modal opens/closes
+    if (!isOpen) {
+      setForgotPasswordEmail("");
+      setForgotPasswordSent(false);
+    }
+  }, [initialMode, isOpen]);
 
   useEffect(() => {
     if (isOpen) {
@@ -53,6 +62,34 @@ export default function AuthModal({
     setSignupForm((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      const response = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: forgotPasswordEmail }),
+      });
+
+      if (!response.ok) {
+        const { error } = await response.json();
+        throw new Error(error || "Failed to send reset email");
+      }
+
+      setForgotPasswordSent(true);
+      toast.success("Password reset link sent to your email!");
+    } catch (error) {
+      console.error(error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to send reset link";
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -65,20 +102,57 @@ export default function AuthModal({
       });
 
       if (!response.ok) {
-        const { error } = await response.json();
-        throw new Error(error || "Failed to login");
+        const errorData = await response.json();
+        const error = errorData.error || "Failed to login";
+
+        // If email is not verified, offer to resend OTP
+        if (response.status === 403 && error.includes("verify your email")) {
+          toast.error(error);
+          // Try to get userId to resend OTP
+          try {
+            const userResponse = await fetch(
+              `/api/auth/get-user-by-email?email=${encodeURIComponent(
+                loginForm.email
+              )}`
+            );
+            if (userResponse.ok) {
+              const userData = await userResponse.json();
+              if (userData.userId) {
+                // Show option to resend OTP
+                const resendResponse = await fetch("/api/auth/resend-otp", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ userId: userData.userId }),
+                });
+                if (resendResponse.ok) {
+                  toast.success(
+                    "OTP resent! Redirecting to verification page..."
+                  );
+                  onClose();
+                  window.location.href = `/verify-otp?userId=${userData.userId}`;
+                  return;
+                }
+              }
+            }
+          } catch (resendError) {
+            console.error("Error resending OTP:", resendError);
+          }
+        }
+
+        throw new Error(error);
       }
 
       const data = await response.json();
       loginStore(data.user, data.token);
       toast.success("Welcome back!");
       onClose();
-      
+
       // Reset form
       setLoginForm({ email: "", password: "" });
     } catch (error) {
       console.error(error);
-      const errorMessage = error instanceof Error ? error.message : "Unable to login";
+      const errorMessage =
+        error instanceof Error ? error.message : "Unable to login";
       toast.error(errorMessage);
     } finally {
       setLoading(false);
@@ -101,32 +175,21 @@ export default function AuthModal({
         throw new Error(error || "Failed to sign up");
       }
 
-      toast.success("Account created! Logging you in…");
+      const data = await response.json();
+      toast.success(
+        "OTP sent to your email! Please verify to complete registration."
+      );
 
-      const loginResponse = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: signupForm.email,
-          password: signupForm.password,
-        }),
-      });
-
-      if (!loginResponse.ok) {
-        throw new Error(
-          "Account created, but automatic login failed. Please login manually."
-        );
-      }
-
-      const loginData = await loginResponse.json();
-      loginStore(loginData.user, loginData.token);
+      // Close modal and redirect to OTP verification page
       onClose();
-      
+      window.location.href = `/verify-otp?userId=${data.userId}`;
+
       // Reset form
       setSignupForm({ name: "", email: "", password: "" });
     } catch (error) {
       console.error(error);
-      const errorMessage = error instanceof Error ? error.message : "Unable to sign up";
+      const errorMessage =
+        error instanceof Error ? error.message : "Unable to sign up";
       toast.error(errorMessage);
     } finally {
       setLoading(false);
@@ -168,11 +231,15 @@ export default function AuthModal({
                 <h3 className="text-3xl font-bold leading-tight">
                   {mode === "login"
                     ? "Welcome Back!"
+                    : mode === "forgotPassword"
+                    ? "Reset Your Password"
                     : "Start Your Journey"}
                 </h3>
                 <p className="text-white/90 text-lg leading-relaxed">
                   {mode === "login"
                     ? "Access your wishlist, track orders, and discover personalized recommendations tailored just for you."
+                    : mode === "forgotPassword"
+                    ? "Don't worry! We'll help you regain access to your account. Enter your email and we'll send you a secure reset link."
                     : "Join thousands of happy customers. Create your account to save favorites, track orders, and enjoy exclusive offers."}
                 </p>
               </div>
@@ -211,17 +278,125 @@ export default function AuthModal({
             {/* Header */}
             <div className="mb-8">
               <h2 className="text-3xl font-bold text-neutral-900 mb-2">
-                {mode === "login" ? "Login" : "Create Account"}
+                {mode === "login"
+                  ? "Login"
+                  : mode === "forgotPassword"
+                  ? "Reset Password"
+                  : "Create Account"}
               </h2>
               <p className="text-neutral-600">
                 {mode === "login"
                   ? "Enter your credentials to continue"
+                  : mode === "forgotPassword"
+                  ? "Enter your email and we'll send you a reset link"
                   : "Fill in your details to get started"}
               </p>
             </div>
 
             {/* Form */}
-            {mode === "login" ? (
+            {mode === "forgotPassword" ? (
+              forgotPasswordSent ? (
+                <div className="space-y-6 flex-1">
+                  <div className="text-center space-y-4">
+                    <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
+                      <svg
+                        className="w-8 h-8 text-green-600"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M5 13l4 4L19 7"
+                        />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-semibold text-neutral-900 mb-2">
+                        Check Your Email
+                      </h3>
+                      <p className="text-sm text-neutral-600">
+                        We&apos;ve sent a password reset link to{" "}
+                        <strong>{forgotPasswordEmail}</strong>. Please check
+                        your inbox and click the link to reset your password.
+                      </p>
+                      <p className="text-xs text-neutral-400 mt-2">
+                        The link will expire in 1 hour.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <Button
+                      onClick={() => {
+                        setForgotPasswordSent(false);
+                        setForgotPasswordEmail("");
+                      }}
+                      className="w-full"
+                    >
+                      Send Another Email
+                    </Button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode("login");
+                        setForgotPasswordEmail("");
+                        setForgotPasswordSent(false);
+                      }}
+                      className="w-full py-3 px-4 border-2 border-neutral-300 text-neutral-700 rounded-lg font-semibold hover:bg-neutral-50 transition-colors"
+                    >
+                      Back to Login
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <form
+                  onSubmit={handleForgotPassword}
+                  className="space-y-5 flex-1"
+                >
+                  <Input
+                    label="Email"
+                    type="email"
+                    name="email"
+                    value={forgotPasswordEmail}
+                    onChange={(e) => setForgotPasswordEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    required
+                  />
+
+                  <Button
+                    type="submit"
+                    className="w-full mt-6"
+                    isLoading={loading}
+                  >
+                    Send Reset Link
+                  </Button>
+
+                  <div className="relative my-6">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-neutral-200"></div>
+                    </div>
+                    <div className="relative flex justify-center text-sm">
+                      <span className="px-4 bg-white text-neutral-500">
+                        Remember your password?
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode("login");
+                      setForgotPasswordEmail("");
+                    }}
+                    className="w-full py-3 px-4 border-2 border-[#FF9AA2] text-[#FF9AA2] rounded-lg font-semibold hover:bg-[#FFE5E7] transition-colors"
+                  >
+                    Login Instead
+                  </button>
+                </form>
+              )
+            ) : mode === "login" ? (
               <form onSubmit={handleLogin} className="space-y-5 flex-1">
                 <Input
                   label="Email"
@@ -242,6 +417,16 @@ export default function AuthModal({
                   placeholder="Enter your password"
                   required
                 />
+
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setMode("forgotPassword")}
+                    className="text-sm font-semibold text-[#FF9AA2] hover:underline"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
 
                 <Button
                   type="submit"
@@ -348,4 +533,3 @@ export default function AuthModal({
     </div>
   );
 }
-

@@ -1,7 +1,7 @@
 "use client";
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   FaHome,
   FaBox,
@@ -14,10 +14,12 @@ import {
   FaTags,
   FaQuestionCircle,
 } from "react-icons/fa";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import useAuthStore from "@/store/useAuthStore";
 import useWishlistStore from "@/store/useWishlistStore";
 import useCartStore from "@/store/useCartStore";
+import Modal from "@/components/ui/Modal";
 
 interface NavItem {
   name: string;
@@ -38,14 +40,23 @@ const navItems: NavItem[] = [
 
 const AdminSidebar = () => {
   const pathname = usePathname();
+  const router = useRouter();
   const { logout } = useAuthStore();
   const clearWishlist = useWishlistStore((state) => state.clearWishlist);
   const clearCart = useCartStore((state) => state.clearCart);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   const handleLogout = () => {
+    setShowLogoutModal(true);
+  };
+
+  const confirmLogout = () => {
     logout();
     clearWishlist();
     clearCart();
+    setShowLogoutModal(false);
+    toast.success("You have been logged out successfully");
+    router.push("/");
   };
 
   return (
@@ -109,6 +120,30 @@ const AdminSidebar = () => {
           </button>
         </div>
       </div>
+      <Modal
+        isOpen={showLogoutModal}
+        onClose={() => setShowLogoutModal(false)}
+        title="Confirm Logout"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-neutral-700">Are you sure you want to log out?</p>
+          <div className="flex gap-3 justify-end">
+            <button
+              onClick={() => setShowLogoutModal(false)}
+              className="px-4 py-2 rounded-lg border border-neutral-300 text-neutral-700 hover:bg-neutral-50 transition"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmLogout}
+              className="px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition"
+            >
+              Logout
+            </button>
+          </div>
+        </div>
+      </Modal>
     </aside>
   );
 };

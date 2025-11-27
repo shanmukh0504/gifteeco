@@ -20,7 +20,7 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Dappers Dress Code - Premium Corporate Gifting",
+  title: "Gifteeco - Premium Corporate Gifting",
   description:
     "Your one-stop destination for premium corporate gifting and custom apparel solutions",
 };

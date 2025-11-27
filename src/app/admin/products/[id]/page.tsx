@@ -184,34 +184,32 @@ export default function EditProductPage({
         const product = await response.json();
 
         const colorEntries = product.hasColorOptions
-          ? Object.entries(product.colors || {}).map(
-              ([hex, value]) => {
-                const colorValue = value as {
-                  images?: string[];
-                  stock?: number;
-                  customization?: Record<string, unknown>;
-                };
-                const baseCustomization = createSlotCustomization();
-                const mergedCustomization = SLOT_KEYS.reduce(
-                  (acc, slot) => ({
-                    ...acc,
-                    [slot]: {
-                      ...baseCustomization[slot],
-                      ...(colorValue?.customization?.[slot] ?? {}),
-                    },
-                  }),
-                  {} as Record<SlotKey, SlotCustomizationForm>
-                );
+          ? Object.entries(product.colors || {}).map(([hex, value]) => {
+              const colorValue = value as {
+                images?: string[];
+                stock?: number;
+                customization?: Record<string, unknown>;
+              };
+              const baseCustomization = createSlotCustomization();
+              const mergedCustomization = SLOT_KEYS.reduce(
+                (acc, slot) => ({
+                  ...acc,
+                  [slot]: {
+                    ...baseCustomization[slot],
+                    ...(colorValue?.customization?.[slot] ?? {}),
+                  },
+                }),
+                {} as Record<SlotKey, SlotCustomizationForm>
+              );
 
-                return {
-                  key: hex,
-                  hex,
-                  stock: colorValue?.stock?.toString() || "",
-                  images: colorValue?.images || [],
-                  customization: mergedCustomization,
-                };
-              }
-            )
+              return {
+                key: hex,
+                hex,
+                stock: colorValue?.stock?.toString() || "",
+                images: colorValue?.images || [],
+                customization: mergedCustomization,
+              };
+            })
           : [];
 
         const resolvedCategoryId =
@@ -462,7 +460,7 @@ export default function EditProductPage({
           };
 
       const resolvedParams = await params;
-      const payload = {
+      const payload: Record<string, unknown> = {
         name: productData.name,
         description: productData.description,
         category: productData.categoryId,
@@ -476,6 +474,24 @@ export default function EditProductPage({
         noColor: noColorPayload,
         customDefaults: productData.customDefaults,
       };
+
+      // Handle material - convert empty string to null, otherwise use the value
+      if (productData.material && productData.material.trim()) {
+        payload.material = productData.material.trim();
+      } else {
+        payload.material = null;
+      }
+
+      // Handle deliveryTimeInDays - convert empty string to null, otherwise parse as number
+      if (
+        productData.deliveryTimeInDays &&
+        productData.deliveryTimeInDays.trim()
+      ) {
+        const days = parseInt(productData.deliveryTimeInDays, 10);
+        payload.deliveryTimeInDays = isNaN(days) ? null : days;
+      } else {
+        payload.deliveryTimeInDays = null;
+      }
       const response = await fetch(`/api/products/${resolvedParams.id}`, {
         method: "PUT",
         headers: {

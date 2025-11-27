@@ -1,38 +1,95 @@
-import { notFound } from "next/navigation";
-import connectDB from "@/lib/db";
-import Product from "@/models/Product";
-import Category from "@/models/Category";
-import ProductDetailView from "@/components/product/ProductDetailView";
+"use client";
 
-type Params = {
-  params: Promise<{ id: string }>;
+import { useEffect, useState } from "react";
+import { useParams, notFound } from "next/navigation";
+import ProductDetailView from "@/components/product/ProductDetailView";
+import ProductDetailSkeleton from "@/components/skeletons/ProductDetailSkeleton";
+import { SlotKey, BoundingBox } from "@/constants/customization";
+
+type SlotCustomization = {
+  enabled?: boolean;
+  mockupImage?: string;
+  allowImage?: boolean;
+  allowText?: boolean;
+  allowFill?: boolean;
 };
 
-export default async function ProductPage({ params }: Params) {
-  try {
-    const { id } = await params;
-    await connectDB();
+type ProductColor = {
+  images?: string[];
+  stock?: number;
+  customization?: Record<SlotKey, SlotCustomization>;
+};
 
-    // Import Category to ensure it's registered before populate
-    void Category;
+type ProductDetail = {
+  _id: string;
+  name: string;
+  description: string;
+  price: number;
+  minQuantity?: number;
+  sizes?: string[];
+  colors?: Record<string, ProductColor>;
+  noColor?: ProductColor;
+  customDefaults?: Record<SlotKey, BoundingBox>;
+  ratingsSummary?: {
+    average: number;
+    count: number;
+  };
+  [key: string]: unknown;
+};
 
-    const productDoc = await Product.findById(id)
-      .populate("category", "name")
-      .lean();
+export default function ProductPage() {
+  const params = useParams();
+  const id = params?.id as string;
+  const [product, setProduct] = useState<ProductDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
-    if (!productDoc) {
-      notFound();
+  useEffect(() => {
+    if (!id) {
+      setError(true);
+      setLoading(false);
+      return;
     }
 
-    const product = JSON.parse(JSON.stringify(productDoc));
+    const fetchProduct = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(`/api/products/${id}`);
+        if (!response.ok) {
+          if (response.status === 404) {
+            setError(true);
+            return;
+          }
+          throw new Error("Failed to fetch product");
+        }
+        const data = await response.json();
+        setProduct(data);
+      } catch (err) {
+        console.error("Error loading product:", err);
+        setError(true);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-    return (
-      <div className="mx-auto max-w-7xl px-4 py-12 md:px-6">
-        <ProductDetailView product={product} />
-      </div>
-    );
-  } catch (error) {
-    console.error("Error loading product:", error);
+    fetchProduct();
+  }, [id]);
+
+  if (error) {
     notFound();
   }
+
+  if (loading) {
+    return <ProductDetailSkeleton />;
+  }
+
+  if (!product) {
+    notFound();
+  }
+
+  return (
+    <div className="mx-auto max-w-7xl px-4 py-12 md:px-6">
+      <ProductDetailView product={product} />
+    </div>
+  );
 }

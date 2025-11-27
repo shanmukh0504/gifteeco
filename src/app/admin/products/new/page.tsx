@@ -106,7 +106,9 @@ export default function AddProductPage() {
     material: "",
     deliveryTimeInDays: "",
   });
-  const [availableProducts, setAvailableProducts] = useState<Array<{ _id: string; name: string }>>([]);
+  const [availableProducts, setAvailableProducts] = useState<
+    Array<{ _id: string; name: string }>
+  >([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(false);
   const [categorySearch, setCategorySearch] = useState("");
@@ -155,14 +157,16 @@ export default function AddProductPage() {
     );
   }, [categories, categorySearch]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
     const { name, value } = e.target;
-    setProductData(prev => ({ ...prev, [name]: value }));
+    setProductData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSizesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const sizes = e.target.value.split(",").map(size => size.trim());
-    setProductData(prev => ({ ...prev, sizes }));
+    const sizes = e.target.value.split(",").map((size) => size.trim());
+    setProductData((prev) => ({ ...prev, sizes }));
   };
 
   const handleVariantChange = (
@@ -283,7 +287,8 @@ export default function AddProductPage() {
       toast.success(`Category "${category.name}" added`);
     } catch (error) {
       console.error(error);
-      const errorMessage = error instanceof Error ? error.message : "Failed to add category";
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to add category";
       toast.error(errorMessage);
     } finally {
       setAddingCategory(false);
@@ -347,9 +352,25 @@ export default function AddProductPage() {
         colors: colorsPayload,
         noColor: noColorPayload,
         customDefaults: productData.customDefaults,
-        material: productData.material || undefined,
-        deliveryTimeInDays: productData.deliveryTimeInDays ? parseInt(productData.deliveryTimeInDays, 10) : undefined,
       };
+
+      // Handle material - convert empty string to null, otherwise use the value
+      if (productData.material && productData.material.trim()) {
+        payload.material = productData.material.trim();
+      } else {
+        payload.material = null;
+      }
+
+      // Handle deliveryTimeInDays - convert empty string to null, otherwise parse as number
+      if (
+        productData.deliveryTimeInDays &&
+        productData.deliveryTimeInDays.trim()
+      ) {
+        const days = parseInt(productData.deliveryTimeInDays, 10);
+        payload.deliveryTimeInDays = isNaN(days) ? null : days;
+      } else {
+        payload.deliveryTimeInDays = null;
+      }
 
       // Add comboItems only if type is combo
       if (productData.type === "combo" && productData.comboItems.length > 0) {
@@ -362,9 +383,9 @@ export default function AddProductPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${useAuthStore.getState().token}`
+          Authorization: `Bearer ${useAuthStore.getState().token}`,
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -380,15 +401,17 @@ export default function AddProductPage() {
     }
   };
 
-  if (!user || user.role !== 'admin') {
-    router.push('/login');
+  if (!user || user.role !== "admin") {
+    router.push("/login");
     return null;
   }
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-neutral-900 mb-2">Add New Product</h1>
+        <h1 className="text-3xl font-bold text-neutral-900 mb-2">
+          Add New Product
+        </h1>
         <p className="text-neutral-600">Create a new product for your store</p>
       </div>
 
@@ -405,7 +428,9 @@ export default function AddProductPage() {
           />
 
           <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1.5">Description</label>
+            <label className="block text-sm font-medium text-neutral-700 mb-1.5">
+              Description
+            </label>
             <textarea
               name="description"
               value={productData.description}
@@ -450,7 +475,9 @@ export default function AddProductPage() {
               <input
                 type="text"
                 value={categorySearch}
-                onChange={(e) => setCategorySearch(normalizeCategory(e.target.value))}
+                onChange={(e) =>
+                  setCategorySearch(normalizeCategory(e.target.value))
+                }
                 placeholder="Search or type to add..."
                 className="w-full rounded-lg border border-neutral-300 px-4 py-2 focus:border-brand focus:ring-brand"
               />
@@ -459,7 +486,9 @@ export default function AddProductPage() {
               </p>
               <div className="mt-3 flex max-h-48 flex-wrap gap-2 overflow-y-auto">
                 {categoriesLoading ? (
-                  <span className="text-sm text-neutral-500">Loading categories...</span>
+                  <span className="text-sm text-neutral-500">
+                    Loading categories...
+                  </span>
                 ) : filteredCategories.length ? (
                   filteredCategories.map((category) => {
                     const isSelected = productData.categoryId === category._id;
@@ -479,14 +508,18 @@ export default function AddProductPage() {
                     );
                   })
                 ) : (
-                  <span className="text-sm text-neutral-500">No categories found.</span>
+                  <span className="text-sm text-neutral-500">
+                    No categories found.
+                  </span>
                 )}
               </div>
               <div className="mt-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                 <div className="text-xs text-neutral-500">
                   Selected:{" "}
                   {productData.categoryId
-                    ? categories.find((cat) => cat._id === productData.categoryId)?.name
+                    ? categories.find(
+                        (cat) => cat._id === productData.categoryId
+                      )?.name
                     : "None"}
                 </div>
                 <Button
@@ -510,7 +543,10 @@ export default function AddProductPage() {
               name="subCategory"
               value={productData.subCategory}
               onChange={(e) =>
-                setProductData((prev) => ({ ...prev, subCategory: e.target.value }))
+                setProductData((prev) => ({
+                  ...prev,
+                  subCategory: e.target.value,
+                }))
               }
               className="w-full rounded-lg border border-neutral-300 px-4 py-2.5 transition focus:outline-none focus:ring-2 focus:ring-[#FF9AA2]"
             >
@@ -582,7 +618,8 @@ export default function AddProductPage() {
               className="w-full px-4 py-2.5 border border-neutral-300 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-[#FF9AA2] focus:border-transparent placeholder:text-neutral-400"
             />
             <p className="mt-1 text-xs text-neutral-500">
-              Separate tags with commas. These help improve search results. For combos, include names of included items.
+              Separate tags with commas. These help improve search results. For
+              combos, include names of included items.
             </p>
           </div>
 
@@ -601,7 +638,8 @@ export default function AddProductPage() {
                     setProductData((prev) => ({
                       ...prev,
                       type: e.target.value as "single" | "combo",
-                      comboItems: e.target.value === "single" ? [] : prev.comboItems,
+                      comboItems:
+                        e.target.value === "single" ? [] : prev.comboItems,
                     }))
                   }
                   className="w-4 h-4 text-brand focus:ring-brand"
@@ -644,8 +682,13 @@ export default function AddProductPage() {
                       .then((products) => {
                         setAvailableProducts(
                           products
-                            .filter((p: { type?: string }) => p.type === "single")
-                            .map((p: { _id: string; name: string }) => ({ _id: p._id, name: p.name }))
+                            .filter(
+                              (p: { type?: string }) => p.type === "single"
+                            )
+                            .map((p: { _id: string; name: string }) => ({
+                              _id: p._id,
+                              name: p.name,
+                            }))
                         );
                       });
                     setProductData((prev) => ({
@@ -674,7 +717,10 @@ export default function AddProductPage() {
                       onChange={(e) => {
                         const updated = [...productData.comboItems];
                         updated[index].productId = e.target.value;
-                        setProductData((prev) => ({ ...prev, comboItems: updated }));
+                        setProductData((prev) => ({
+                          ...prev,
+                          comboItems: updated,
+                        }));
                       }}
                       className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-brand focus:ring-brand"
                     >
@@ -697,7 +743,10 @@ export default function AddProductPage() {
                       onChange={(e) => {
                         const updated = [...productData.comboItems];
                         updated[index].quantity = parseInt(e.target.value) || 1;
-                        setProductData((prev) => ({ ...prev, comboItems: updated }));
+                        setProductData((prev) => ({
+                          ...prev,
+                          comboItems: updated,
+                        }));
                       }}
                       className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-brand focus:ring-brand"
                     />
@@ -708,7 +757,10 @@ export default function AddProductPage() {
                       const updated = productData.comboItems.filter(
                         (_, i) => i !== index
                       );
-                      setProductData((prev) => ({ ...prev, comboItems: updated }));
+                      setProductData((prev) => ({
+                        ...prev,
+                        comboItems: updated,
+                      }));
                     }}
                     className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"
                   >
@@ -718,7 +770,8 @@ export default function AddProductPage() {
               ))}
               {productData.comboItems.length === 0 && (
                 <p className="text-sm text-neutral-500">
-                  No items added. Click &quot;Add Item&quot; to include products in this combo.
+                  No items added. Click &quot;Add Item&quot; to include products
+                  in this combo.
                 </p>
               )}
             </div>
@@ -730,7 +783,10 @@ export default function AddProductPage() {
                 type="checkbox"
                 checked={productData.isFeatured}
                 onChange={(e) =>
-                  setProductData((prev) => ({ ...prev, isFeatured: e.target.checked }))
+                  setProductData((prev) => ({
+                    ...prev,
+                    isFeatured: e.target.checked,
+                  }))
                 }
                 className="w-4 h-4 text-brand focus:ring-brand rounded border-neutral-300"
               />
@@ -751,7 +807,10 @@ export default function AddProductPage() {
               </p>
             </div>
             {SLOT_KEYS.map((slot) => (
-              <div key={slot} className="space-y-3 rounded-xl border border-neutral-100 p-3">
+              <div
+                key={slot}
+                className="space-y-3 rounded-xl border border-neutral-100 p-3"
+              >
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold">{SLOT_LABELS[slot]}</p>
                   <p className="text-xs text-neutral-500">
@@ -899,13 +958,14 @@ export default function AddProductPage() {
                                 </p>
                                 <p className="text-xs text-neutral-500">
                                   Box:{" "}
-                                  {(productData.customDefaults[slot].width * 100).toFixed(
-                                    0
-                                  )}
+                                  {(
+                                    productData.customDefaults[slot].width * 100
+                                  ).toFixed(0)}
                                   % ×{" "}
-                                  {(productData.customDefaults[slot].height * 100).toFixed(
-                                    0
-                                  )}
+                                  {(
+                                    productData.customDefaults[slot].height *
+                                    100
+                                  ).toFixed(0)}
                                   %
                                 </p>
                               </div>
@@ -1055,10 +1115,7 @@ export default function AddProductPage() {
             >
               Cancel
             </Button>
-            <Button
-              type="submit"
-              isLoading={loading}
-            >
+            <Button type="submit" isLoading={loading}>
               Create Product
             </Button>
           </div>
