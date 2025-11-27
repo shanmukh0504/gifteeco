@@ -2,16 +2,18 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState, useRef, useCallback } from "react";
+import { toast } from "sonner";
 import useAuthStore from "@/store/useAuthStore";
 import useWishlistStore from "@/store/useWishlistStore";
 import useCartStore from "@/store/useCartStore";
+import Modal from "@/components/ui/Modal";
 
 const navLinks = [
   { label: "About us", href: "#about" },
   { label: "FAQs", href: "#faqs" },
-  { label: "Contact Us", href: "#contact" },
+  { label: "Contact Us", href: "/contact" },
 ];
 
 type Category = {
@@ -50,22 +52,70 @@ function CartCountBadge() {
 
 export default function Navbar() {
   const router = useRouter();
+  const pathname = usePathname();
   const { isAuthenticated, logout: authLogout } = useAuthStore();
   const clearWishlist = useWishlistStore((state) => state.clearWishlist);
   const clearCart = useCartStore((state) => state.clearCart);
 
   const handleLogout = () => {
+    setShowLogoutModal(true);
+  };
+
+  const confirmLogout = () => {
     authLogout();
     clearWishlist();
     clearCart();
+    setShowLogoutModal(false);
+    toast.success("You have been logged out successfully");
     router.push("/");
   };
+
+  const handleNavLinkClick = useCallback(
+    (href: string, e: React.MouseEvent<HTMLAnchorElement>) => {
+      if (href.startsWith("#")) {
+        e.preventDefault();
+
+        if (pathname !== "/") {
+          router.push(`/${href}`);
+        } else {
+          const element = document.querySelector(href);
+          if (element) {
+            setTimeout(() => {
+              element.scrollIntoView({ behavior: "smooth", block: "start" });
+            }, 50);
+          }
+        }
+      }
+    },
+    [pathname, router]
+  );
+
+  useEffect(() => {
+    if (pathname === "/" && window.location.hash) {
+      const hash = window.location.hash;
+      const scrollToSection = () => {
+        const element = document.querySelector(hash);
+        if (element) {
+          element.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      };
+
+      scrollToSection();
+
+      const timeoutId = setTimeout(scrollToSection, 300);
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [pathname]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showBulkDropdown, setShowBulkDropdown] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const bulkDropdownRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const bulkTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Search state
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
@@ -80,7 +130,6 @@ export default function Navbar() {
     fetchCategories();
   }, []);
 
-  // Fetch search suggestions
   const fetchSuggestions = useCallback(async (query: string) => {
     if (!query || query.length < 2) {
       setSuggestions([]);
@@ -108,7 +157,6 @@ export default function Navbar() {
     }
   }, []);
 
-  // Debounced search
   useEffect(() => {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
@@ -134,12 +182,17 @@ export default function Navbar() {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
 
-      // Handle categories dropdown
       if (dropdownRef.current && !dropdownRef.current.contains(target)) {
         setShowDropdown(false);
       }
 
-      // Handle search suggestions
+      if (
+        bulkDropdownRef.current &&
+        !bulkDropdownRef.current.contains(target)
+      ) {
+        setShowBulkDropdown(false);
+      }
+
       if (
         searchContainerRef.current &&
         !searchContainerRef.current.contains(target)
@@ -152,7 +205,6 @@ export default function Navbar() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Handle search
   const handleSearch = (query: string = searchQuery) => {
     if (!query.trim()) return;
 
@@ -180,11 +232,13 @@ export default function Navbar() {
     }
   };
 
-  // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
+      }
+      if (bulkTimeoutRef.current) {
+        clearTimeout(bulkTimeoutRef.current);
       }
     };
   }, []);
@@ -202,40 +256,38 @@ export default function Navbar() {
   };
 
   return (
-    <header className="w-full sticky top-0 z-50 bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/60 shadow-sm">
-      <nav className="mx-auto flex w-full items-center justify-between px-4 py-2 md:px-10">
-        <Link href="/" className="flex items-center">
-          <Image
-            src="/logo.png"
-            alt="Gifteeco"
-            width={70}
-            height={22}
-            className="h-16 w-auto"
-            priority
-          />
-        </Link>
-
-        <div className="ml-auto hidden items-center gap-6 text-sm font-semibold text-neutral-700 md:flex">
+    <>
+      {searchFocused &&
+        searchQuery.trim() &&
+        (loadingSuggestions || suggestions.length > 0 || autocorrect) && (
           <div
-            ref={dropdownRef}
-            className="relative"
-            onMouseEnter={() => {
-              // Clear any pending close timeout
-              if (timeoutRef.current) {
-                clearTimeout(timeoutRef.current);
-                timeoutRef.current = null;
-              }
-              setShowDropdown(true);
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[45] transition-opacity duration-300"
+            onClick={() => {
+              setSearchFocused(false);
+              setSearchQuery("");
+              setSuggestions([]);
+              setAutocorrect(null);
+              searchInputRef.current?.blur();
             }}
-            onMouseLeave={() => {
-              // Add a small delay before closing to allow moving to dropdown
-              timeoutRef.current = setTimeout(() => {
-                setShowDropdown(false);
-              }, 150);
-            }}
-          >
+          />
+        )}
+      <header className="w-full sticky top-0 z-50 bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/60 shadow-sm">
+        <nav className="mx-auto flex w-full items-center justify-between px-4 py-2 md:px-10">
+          <Link href="/" className="flex items-center">
+            <Image
+              src="/logo.png"
+              alt="Gifteeco"
+              width={70}
+              height={22}
+              className="h-16 w-auto"
+              priority
+            />
+          </Link>
+
+          <div className="ml-auto hidden items-center gap-6 text-sm font-semibold text-neutral-700 md:flex">
             <div
-              className="transition hover:text-neutral-900 flex items-center gap-1 cursor-pointer"
+              ref={dropdownRef}
+              className="relative"
               onMouseEnter={() => {
                 if (timeoutRef.current) {
                   clearTimeout(timeoutRef.current);
@@ -243,228 +295,405 @@ export default function Navbar() {
                 }
                 setShowDropdown(true);
               }}
+              onMouseLeave={() => {
+                timeoutRef.current = setTimeout(() => {
+                  setShowDropdown(false);
+                }, 150);
+              }}
             >
-              Products
-              <svg
-                className={`w-4 h-4 transition-transform ${
-                  showDropdown ? "rotate-180" : ""
-                }`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M19 9l-7 7-7-7"
-                />
-              </svg>
-            </div>
-
-            {showDropdown && categories.length > 0 && (
               <div
-                className="absolute top-full left-0 mt-1 w-96 bg-white rounded-lg shadow-lg border border-neutral-200 py-4 z-50"
+                className="transition hover:text-neutral-900 flex items-center gap-1 cursor-pointer"
                 onMouseEnter={() => {
-                  // Clear timeout when mouse enters dropdown
                   if (timeoutRef.current) {
                     clearTimeout(timeoutRef.current);
                     timeoutRef.current = null;
                   }
                   setShowDropdown(true);
                 }}
-                onMouseLeave={() => {
-                  // Close when mouse leaves dropdown
-                  timeoutRef.current = setTimeout(() => {
-                    setShowDropdown(false);
-                  }, 150);
-                }}
               >
-                <div className="grid grid-cols-2 gap-4 px-4">
-                  {categories.map((category) => (
-                    <div key={category._id} className="space-y-2">
-                      <h3 className="font-semibold text-neutral-900 text-base mb-2">
-                        {category.name}
-                      </h3>
-                      <div className="space-y-1">
-                        {category.subcategories.map((sub) => (
-                          <Link
-                            key={sub._id}
-                            href={`/products?category=${sub._id}`}
-                            className="block text-sm text-neutral-600 hover:text-[#FF9AA2] transition-colors py-1"
-                            onClick={() => setShowDropdown(false)}
-                          >
-                            {sub.name}
-                          </Link>
+                Products
+                <svg
+                  className={`w-4 h-4 transition-transform ${
+                    showDropdown ? "rotate-180" : ""
+                  }`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </div>
+
+              {showDropdown &&
+                categories.length > 0 &&
+                (() => {
+                  const numColumns = Math.max(
+                    2,
+                    Math.floor(categories.length / 2)
+                  );
+                  const columnWidth = 200;
+
+                  return (
+                    <div
+                      className="absolute top-full left-1/2 -translate-x-1/2 mt-0 bg-white rounded-lg shadow-lg border border-neutral-200 py-4 z-50 max-h-[50vh] overflow-y-auto"
+                      style={{
+                        width: `${numColumns * columnWidth}px`,
+                        minWidth: "400px",
+                      }}
+                      onMouseEnter={() => {
+                        if (timeoutRef.current) {
+                          clearTimeout(timeoutRef.current);
+                          timeoutRef.current = null;
+                        }
+                        setShowDropdown(true);
+                      }}
+                      onMouseLeave={() => {
+                        timeoutRef.current = setTimeout(() => {
+                          setShowDropdown(false);
+                        }, 150);
+                      }}
+                    >
+                      <div
+                        className="grid gap-4 px-4"
+                        style={{
+                          gridTemplateColumns: `repeat(${numColumns}, minmax(180px, 1fr))`,
+                        }}
+                      >
+                        {categories.map((category) => (
+                          <div key={category._id} className="space-y-2">
+                            <h3 className="font-semibold text-neutral-900 text-base mb-2">
+                              {category.name}
+                            </h3>
+                            <div className="space-y-1">
+                              {category.subcategories.map((sub) => (
+                                <Link
+                                  key={sub._id}
+                                  href={`/products?category=${sub._id}`}
+                                  className="block text-sm text-neutral-600 hover:text-[#FF9AA2] transition-colors py-1"
+                                  onClick={() => setShowDropdown(false)}
+                                >
+                                  {sub.name}
+                                </Link>
+                              ))}
+                            </div>
+                          </div>
                         ))}
                       </div>
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+                  );
+                })()}
+            </div>
 
-          {navLinks.map((link) => (
-            <Link
-              key={link.label}
-              href={link.href}
-              className="transition hover:text-neutral-900"
-            >
-              {link.label}
-            </Link>
-          ))}
-
-          <div className="flex items-center gap-2">
-            {/* Amazon-style Search Bar */}
             <div
-              ref={searchContainerRef}
-              className={`relative transition-all duration-300 ${
-                searchFocused ? "flex-1 max-w-2xl mx-4" : "w-44"
-              }`}
+              ref={bulkDropdownRef}
+              className="relative"
+              onMouseEnter={() => {
+                if (bulkTimeoutRef.current) {
+                  clearTimeout(bulkTimeoutRef.current);
+                  bulkTimeoutRef.current = null;
+                }
+                setShowBulkDropdown(true);
+              }}
+              onMouseLeave={() => {
+                bulkTimeoutRef.current = setTimeout(() => {
+                  setShowBulkDropdown(false);
+                }, 150);
+              }}
             >
               <div
-                className={`flex items-center gap-2 rounded-full bg-neutral-100 px-3 py-2 text-[13px] text-neutral-500 transition-all duration-300 ${
-                  searchFocused ? "shadow-lg ring-2 ring-[#FF9AA2]" : ""
-                }`}
+                className="transition hover:text-neutral-900 flex items-center gap-1 cursor-pointer"
+                onMouseEnter={() => {
+                  if (bulkTimeoutRef.current) {
+                    clearTimeout(bulkTimeoutRef.current);
+                    bulkTimeoutRef.current = null;
+                  }
+                  setShowBulkDropdown(true);
+                }}
               >
-                <Image
-                  src="/search.svg"
-                  alt="Search"
-                  width={14}
-                  height={14}
-                  className="flex-shrink-0"
-                />
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  placeholder="Search products..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onFocus={() => setSearchFocused(true)}
-                  onKeyDown={handleKeyDown}
-                  className="w-full bg-transparent outline-none placeholder:text-neutral-400"
-                />
-                {loadingSuggestions && (
-                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-neutral-400"></div>
-                )}
+                Bulk Orders
+                <svg
+                  className={`w-4 h-4 transition-transform ${
+                    showBulkDropdown ? "rotate-180" : ""
+                  }`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
               </div>
 
-              {/* Suggestions Panel */}
-              {searchFocused && (suggestions.length > 0 || autocorrect) && (
+              {showBulkDropdown && (
                 <div
-                  ref={suggestionsRef}
-                  className="absolute top-full left-0 right-0 mt-2 bg-white rounded-lg shadow-xl border border-neutral-200 z-50 max-h-[500px] overflow-y-auto"
+                  className="absolute top-full left-1/2 -translate-x-1/2 mt-0 bg-white rounded-lg shadow-lg border border-neutral-200 py-3 z-50 min-w-[220px]"
+                  onMouseEnter={() => {
+                    if (bulkTimeoutRef.current) {
+                      clearTimeout(bulkTimeoutRef.current);
+                      bulkTimeoutRef.current = null;
+                    }
+                    setShowBulkDropdown(true);
+                  }}
+                  onMouseLeave={() => {
+                    bulkTimeoutRef.current = setTimeout(() => {
+                      setShowBulkDropdown(false);
+                    }, 150);
+                  }}
                 >
-                  {autocorrect && (
-                    <div className="px-4 py-2 bg-blue-50 border-b border-blue-100 text-sm">
-                      <span className="text-neutral-600">Did you mean </span>
-                      <button
-                        onClick={() => {
-                          setSearchQuery(autocorrect);
-                          handleSearch(autocorrect);
-                        }}
-                        className="text-blue-600 font-semibold hover:underline"
+                  <Link
+                    href="/products?bulkOrders=true"
+                    onClick={() => setShowBulkDropdown(false)}
+                    className="block px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 hover:text-[#FF9AA2] transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
                       >
-                        {autocorrect}
-                      </button>
-                      <span className="text-neutral-600">?</span>
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
+                        />
+                      </svg>
+                      <span>Explore Bulk Products</span>
                     </div>
-                  )}
-
-                  <div className="py-2">
-                    {suggestions.map((suggestion) => (
-                      <button
-                        key={suggestion.id}
-                        onClick={() => handleSuggestionClick(suggestion)}
-                        className="w-full px-4 py-3 hover:bg-neutral-50 flex items-center gap-3 text-left transition-colors"
+                  </Link>
+                  <Link
+                    href="/contact"
+                    onClick={() => setShowBulkDropdown(false)}
+                    className="block px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 hover:text-[#FF9AA2] transition-colors border-t border-neutral-100"
+                  >
+                    <div className="flex items-center gap-2">
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
                       >
-                        {suggestion.image ? (
-                          <img
-                            src={suggestion.image}
-                            alt={suggestion.name}
-                            className="w-12 h-12 object-cover rounded"
-                          />
-                        ) : (
-                          <div className="w-12 h-12 bg-neutral-200 rounded flex items-center justify-center">
-                            <Image
-                              src="/search.svg"
-                              alt=""
-                              width={16}
-                              height={16}
-                              className="opacity-50"
-                            />
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium text-neutral-900 truncate">
-                            {suggestion.name}
-                          </div>
-                          <div className="text-xs text-neutral-500">
-                            {suggestion.category} • ${suggestion.price}
-                            {suggestion.type === "combo" && " • Combo"}
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-
-                  {searchQuery.trim() && (
-                    <div className="border-t border-neutral-200 px-4 py-2">
-                      <button
-                        onClick={() => handleSearch()}
-                        className="w-full text-center text-sm font-medium text-[#FF9AA2] hover:text-[#FF9AA2]/80"
-                      >
-                        Search for &quot;{searchQuery}&quot;
-                      </button>
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                        />
+                      </svg>
+                      <span>Contact for Bulk Orders</span>
                     </div>
-                  )}
+                  </Link>
                 </div>
               )}
             </div>
 
-            <Link
-              href="/wishlist"
-              className="p-2 rounded-lg hover:bg-neutral-100 flex-shrink-0 relative"
-            >
-              <Image
-                src="/wishlist.svg"
-                alt="Wishlist"
-                width={18}
-                height={18}
-              />
-            </Link>
-            <Link
-              href="/cart"
-              className="p-2 rounded-lg hover:bg-neutral-100 flex-shrink-0 relative"
-            >
-              <Image src="/cart.svg" alt="Cart" width={18} height={18} />
-              <CartCountBadge />
-            </Link>
-          </div>
+            {navLinks.map((link) => (
+              <Link
+                key={link.label}
+                href={link.href}
+                onClick={(e) => handleNavLinkClick(link.href, e)}
+                className="transition hover:text-neutral-900"
+              >
+                {link.label}
+              </Link>
+            ))}
 
-          {isAuthenticated ? (
-            <button
-              onClick={handleLogout}
-              className="rounded-xl bg-red-500 px-6 py-2 text-white shadow-md shadow-red-500/20 transition hover:bg-red-600"
-            >
-              Logout
-            </button>
-          ) : (
-            <>
-              <Link href="/login" className="transition hover:text-neutral-900">
-                Login
+            <div className="flex items-center gap-2">
+              <div
+                ref={searchContainerRef}
+                className="relative z-[100]"
+                style={{
+                  width: searchFocused ? "352px" : "176px",
+                  marginLeft: "auto",
+                  transition: "width 0.3s ease-in-out",
+                }}
+              >
+                <div
+                  className={`flex items-center gap-2 rounded-full bg-neutral-100 px-3 py-2 text-[13px] text-neutral-500 transition-all duration-300 ${
+                    searchFocused ? "shadow-lg ring-2 ring-[#FF9AA2]" : ""
+                  }`}
+                >
+                  <Image
+                    src="/search.svg"
+                    alt="Search"
+                    width={14}
+                    height={14}
+                    className="flex-shrink-0"
+                  />
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    placeholder="Search products..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onFocus={() => setSearchFocused(true)}
+                    onKeyDown={handleKeyDown}
+                    className="w-full bg-transparent outline-none placeholder:text-neutral-400"
+                  />
+                  {loadingSuggestions && (
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-neutral-400"></div>
+                  )}
+                </div>
+
+                {searchFocused && (suggestions.length > 0 || autocorrect) && (
+                  <div
+                    ref={suggestionsRef}
+                    className="absolute top-full left-0 right-0 mt-2 bg-white rounded-lg shadow-xl border border-neutral-200 z-[100] max-h-[500px] overflow-y-auto"
+                  >
+                    {autocorrect && (
+                      <div className="px-4 py-2 bg-blue-50 border-b border-blue-100 text-sm">
+                        <span className="text-neutral-600">
+                          Showing results for{" "}
+                        </span>
+                        <span className="text-blue-600 font-semibold">
+                          {autocorrect}
+                        </span>
+                        <span className="text-neutral-500 ml-2 text-xs">
+                          (Search instead for &quot;{searchQuery}&quot;)
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="py-2">
+                      {suggestions.map((suggestion) => (
+                        <button
+                          key={suggestion.id}
+                          onClick={() => handleSuggestionClick(suggestion)}
+                          className="w-full px-4 py-3 hover:bg-neutral-50 flex items-center gap-3 text-left transition-colors"
+                        >
+                          {suggestion.image ? (
+                            <Image
+                              src={suggestion.image}
+                              alt={suggestion.name}
+                              width={48}
+                              height={48}
+                              className="w-12 h-12 object-cover rounded"
+                              unoptimized
+                            />
+                          ) : (
+                            <div className="w-12 h-12 bg-neutral-200 rounded flex items-center justify-center">
+                              <Image
+                                src="/search.svg"
+                                alt=""
+                                width={16}
+                                height={16}
+                                className="opacity-50"
+                              />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-neutral-900 truncate">
+                              {suggestion.name}
+                            </div>
+                            <div className="text-xs text-neutral-500">
+                              {suggestion.category} • ${suggestion.price}
+                              {suggestion.type === "combo" && " • Combo"}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+
+                    {searchQuery.trim() && (
+                      <div className="border-t border-neutral-200 px-4 py-2">
+                        <button
+                          onClick={() => handleSearch()}
+                          className="w-full text-center text-sm font-medium text-[#FF9AA2] hover:text-[#FF9AA2]/80"
+                        >
+                          {autocorrect
+                            ? `Search for "${autocorrect}"`
+                            : `Search for "${searchQuery}"`}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <Link
+                href="/wishlist"
+                className="p-2 rounded-lg hover:bg-neutral-100 flex-shrink-0 relative"
+              >
+                <Image
+                  src="/wishlist.svg"
+                  alt="Wishlist"
+                  width={18}
+                  height={18}
+                />
               </Link>
               <Link
-                href="/signup"
-                className="rounded-xl bg-brand px-6 py-2 text-white shadow-md shadow-brand/20 transition hover:bg-brand/90"
+                href="/cart"
+                className="p-2 rounded-lg hover:bg-neutral-100 flex-shrink-0 relative"
               >
-                Sign Up
+                <Image src="/cart.svg" alt="Cart" width={18} height={18} />
+                <CartCountBadge />
               </Link>
-            </>
-          )}
-        </div>
-      </nav>
-    </header>
+            </div>
+
+            {isAuthenticated ? (
+              <>
+                <button
+                  onClick={handleLogout}
+                  className="rounded-xl bg-red-500 px-6 py-2 text-white shadow-md shadow-red-500/20 transition hover:bg-red-600"
+                >
+                  Logout
+                </button>
+                <Modal
+                  isOpen={showLogoutModal}
+                  onClose={() => setShowLogoutModal(false)}
+                  title="Confirm Logout"
+                  size="sm"
+                >
+                  <div className="space-y-4">
+                    <p className="text-neutral-700">
+                      Are you sure you want to log out?
+                    </p>
+                    <div className="flex gap-3 justify-end">
+                      <button
+                        onClick={() => setShowLogoutModal(false)}
+                        className="px-4 py-2 rounded-lg border border-neutral-300 text-neutral-700 hover:bg-neutral-50 transition"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={confirmLogout}
+                        className="px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition"
+                      >
+                        Logout
+                      </button>
+                    </div>
+                  </div>
+                </Modal>
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  className="transition hover:text-neutral-900"
+                >
+                  Login
+                </Link>
+                <Link
+                  href="/signup"
+                  className="rounded-xl bg-brand px-6 py-2 text-white shadow-md shadow-brand/20 transition hover:bg-brand/90"
+                >
+                  Sign Up
+                </Link>
+              </>
+            )}
+          </div>
+        </nav>
+      </header>
+    </>
   );
 }

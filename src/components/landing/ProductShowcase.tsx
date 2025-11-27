@@ -362,7 +362,7 @@ export default function ProductShowcase() {
 
   if (loading) {
     return (
-      <div className="bg-neutral-50">
+      <div>
         <section className="mx-auto w-full max-w-6xl px-4 py-12">
           <div className="mb-6 h-8 w-32 bg-neutral-200 rounded mx-auto animate-pulse" />
           <div className="mb-8 flex justify-center gap-6">
@@ -420,7 +420,7 @@ export default function ProductShowcase() {
   if (!data || !data.tabs || !data.sections) return null;
 
   return (
-    <div className="bg-neutral-50">
+    <div>
       <section className="mx-auto w-full max-w-6xl px-4 py-12">
         <h2 className="mb-6 text-center text-2xl font-semibold text-[#4a154b] underline decoration-2 underline-offset-4">
           Our Products

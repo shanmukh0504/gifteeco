@@ -1,29 +1,41 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
 const SortBy = memo(function SortBy() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const [sortValue, setSortValue] = useState("default");
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+    const sortBy = searchParams.get("sortBy");
+    setSortValue(sortBy || "default");
+  }, [searchParams]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value;
+    setSortValue(value);
+    const params = new URLSearchParams(searchParams.toString());
+    if (value === "default") {
+      params.delete("sortBy");
+    } else {
+      params.set("sortBy", value);
+    }
+    router.replace(
+      `/products${params.toString() ? `?${params.toString()}` : ""}`,
+      { scroll: false }
+    );
+  };
 
   return (
     <div className="flex items-center gap-2">
       <label className="text-sm font-medium text-neutral-700">Sort by:</label>
       <select
-        value={searchParams.get("sortBy") || "default"}
-        onChange={(e) => {
-          const params = new URLSearchParams(searchParams.toString());
-          if (e.target.value === "default") {
-            params.delete("sortBy");
-          } else {
-            params.set("sortBy", e.target.value);
-          }
-          router.replace(
-            `/products${params.toString() ? `?${params.toString()}` : ""}`,
-            { scroll: false }
-          );
-        }}
+        value={isMounted ? sortValue : "default"}
+        onChange={handleChange}
         className="rounded-lg border border-neutral-300 px-4 py-2 text-sm focus:border-[#FF9AA2] focus:outline-none focus:ring-2 focus:ring-[#FF9AA2]"
       >
         <option value="default">Default</option>
@@ -41,4 +53,3 @@ const SortBy = memo(function SortBy() {
 });
 
 export default SortBy;
-

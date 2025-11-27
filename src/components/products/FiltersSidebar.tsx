@@ -1,7 +1,40 @@
 "use client";
 
-import { useState, useEffect, memo } from "react";
+import { useState, useEffect, useRef, memo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+
+// Styles for dual range slider
+const sliderStyles = `
+  .dual-range-slider input[type="range"]::-webkit-slider-thumb {
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #FF9AA2;
+    cursor: pointer;
+    border: 2px solid white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    margin-top: -6px;
+  }
+  .dual-range-slider input[type="range"]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #FF9AA2;
+    cursor: pointer;
+    border: 2px solid white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    border: none;
+  }
+  .dual-range-slider input[type="range"]::-webkit-slider-runnable-track {
+    height: 2px;
+    background: transparent;
+  }
+  .dual-range-slider input[type="range"]::-moz-range-track {
+    height: 2px;
+    background: transparent;
+  }
+`;
 
 type FilterOptions = {
   colors: string[];
@@ -92,7 +125,6 @@ function FiltersSidebar({ onFiltersChange }: FiltersSidebarProps) {
   );
   const [loading, setLoading] = useState(true);
 
-  const [search, setSearch] = useState(searchParams.get("search") || "");
   const [selectedColors, setSelectedColors] = useState<string[]>(
     searchParams.get("colors")?.split(",").filter(Boolean) || []
   );
@@ -116,19 +148,34 @@ function FiltersSidebar({ onFiltersChange }: FiltersSidebarProps) {
   const [expandedSections, setExpandedSections] = useState<
     Record<string, boolean>
   >({
+    color: false,
     price: false,
-    productType: true,
-    material: true,
+    productType: false,
+    material: false,
   });
+
+  const isInitialMount = useRef(true);
+  const filterOptionsLoaded = useRef(false);
+  const isInitializingFromAPI = useRef(false);
 
   useEffect(() => {
     fetchFilterOptions();
   }, []);
 
   useEffect(() => {
+    // Skip applying filters on initial mount, before filter options are loaded, or during initialization
+    if (
+      isInitialMount.current ||
+      !filterOptionsLoaded.current ||
+      isInitializingFromAPI.current
+    ) {
+      if (isInitialMount.current) {
+        isInitialMount.current = false;
+      }
+      return;
+    }
     applyFilters();
   }, [
-    search,
     selectedColors,
     priceRange,
     fastShipping,
@@ -144,8 +191,17 @@ function FiltersSidebar({ onFiltersChange }: FiltersSidebarProps) {
         const data = await response.json();
         setFilterOptions(data);
         if (data.priceRange) {
-          setPriceRange([data.priceRange.min, data.priceRange.max]);
+          // Only set default price range if not specified in URL
+          if (!searchParams.get("minPrice") && !searchParams.get("maxPrice")) {
+            isInitializingFromAPI.current = true;
+            setPriceRange([data.priceRange.min, data.priceRange.max]);
+            // Reset flag after state update would have been processed
+            setTimeout(() => {
+              isInitializingFromAPI.current = false;
+            }, 0);
+          }
         }
+        filterOptionsLoaded.current = true;
       }
     } catch (error) {
       console.error("Error fetching filter options:", error);
@@ -159,6 +215,7 @@ function FiltersSidebar({ onFiltersChange }: FiltersSidebarProps) {
 
     const category = searchParams.get("category");
     const sortBy = searchParams.get("sortBy");
+    const search = searchParams.get("search");
 
     if (category) {
       params.set("category", category);
@@ -166,10 +223,10 @@ function FiltersSidebar({ onFiltersChange }: FiltersSidebarProps) {
     if (sortBy) {
       params.set("sortBy", sortBy);
     }
-
-    if (search.trim()) {
-      params.set("search", search.trim());
+    if (search) {
+      params.set("search", search);
     }
+
     if (selectedColors.length > 0) {
       params.set("colors", selectedColors.join(","));
     }
@@ -200,7 +257,6 @@ function FiltersSidebar({ onFiltersChange }: FiltersSidebarProps) {
 
     if (onFiltersChange) {
       onFiltersChange({
-        search,
         colors: selectedColors,
         priceRange,
         fastShipping,
@@ -253,106 +309,244 @@ function FiltersSidebar({ onFiltersChange }: FiltersSidebarProps) {
   }
 
   return (
-    <div className="w-64 space-y-6 pr-6">
-      <div className="relative">
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search"
-          className="w-full rounded-lg border border-neutral-300 px-4 py-2.5 pl-10 text-sm focus:border-[#FF9AA2] focus:outline-none focus:ring-2 focus:ring-[#FF9AA2]"
-        />
-        <svg
-          className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-          />
-        </svg>
-      </div>
-
-      <div className="space-y-2">
-        <label className="block text-sm font-medium text-neutral-700">
-          Color
-        </label>
-        <div className="flex flex-wrap gap-2">
-          {filterOptions.colors.map((color) => {
-            const isSelected = selectedColors.includes(color);
-            const colorHex = getColorHex(color);
-            return (
-              <button
-                key={color}
-                type="button"
-                onClick={() => toggleColor(color)}
-                className={`h-8 w-8 rounded-full border-2 transition shadow-sm ${
-                  isSelected
-                    ? "border-[#FF9AA2] ring-2 ring-[#FF9AA2] ring-offset-1"
-                    : "border-neutral-300 hover:border-neutral-400"
-                }`}
-                style={{
-                  backgroundColor: colorHex,
-                  boxShadow: isSelected
-                    ? `0 0 0 2px rgba(255, 154, 162, 0.3), 0 2px 4px rgba(0,0,0,0.1)`
-                    : `0 2px 4px rgba(0,0,0,0.1)`,
-                }}
-                title={color}
-                aria-label={`Filter by ${color} color`}
-              />
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="space-y-2">
+    <div className="w-64 space-y-0 pr-6">
+      <div className="space-y-2 border-b border-neutral-200 pb-4">
         <div className="flex items-center justify-between">
-          <label className="block text-sm font-medium text-neutral-700">
-            Price
+          <label className="block text-sm font-medium text-neutral-700 uppercase">
+            Color
           </label>
           <button
             type="button"
-            onClick={() => toggleSection("price")}
-            className="text-neutral-500 hover:text-neutral-700"
+            onClick={() => toggleSection("color")}
+            className="text-neutral-700 hover:text-neutral-900 transition-colors"
           >
             <svg
-              className={`h-4 w-4 transition-transform ${
-                expandedSections.price ? "rotate-180" : ""
+              className={`h-4 w-4 transition-transform duration-300 ${
+                expandedSections.color ? "rotate-0" : "rotate-0"
               }`}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 9l-7 7-7-7"
-              />
+              {expandedSections.color ? (
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M20 12H4"
+                />
+              ) : (
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4v16m8-8H4"
+                />
+              )}
             </svg>
           </button>
         </div>
-        {expandedSections.price && (
-          <div className="space-y-3 pt-2">
+        <div
+          className={`overflow-hidden transition-all duration-300 ease-in-out ${
+            expandedSections.color
+              ? "max-h-96 opacity-100 pt-2"
+              : "max-h-0 opacity-0 pt-0"
+          }`}
+        >
+          <div className="flex flex-wrap gap-2">
+            {filterOptions.colors.map((color) => {
+              const isSelected = selectedColors.includes(color);
+              const colorHex = getColorHex(color);
+              return (
+                <button
+                  key={color}
+                  type="button"
+                  onClick={() => toggleColor(color)}
+                  className={`h-8 w-8 rounded-full border-2 transition shadow-sm ${
+                    isSelected
+                      ? "border-[#FF9AA2] ring-2 ring-[#FF9AA2] ring-offset-1"
+                      : "border-neutral-300 hover:border-neutral-400"
+                  }`}
+                  style={{
+                    backgroundColor: colorHex,
+                    boxShadow: isSelected
+                      ? `0 0 0 2px rgba(255, 154, 162, 0.3), 0 2px 4px rgba(0,0,0,0.1)`
+                      : `0 2px 4px rgba(0,0,0,0.1)`,
+                  }}
+                  title={color}
+                  aria-label={`Filter by ${color} color`}
+                />
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-2 border-b border-neutral-200 pb-4 pt-4">
+        <div className="flex items-center justify-between">
+          <label className="block text-sm font-medium text-neutral-700 uppercase">
+            Price
+          </label>
+          <button
+            type="button"
+            onClick={() => toggleSection("price")}
+            className="text-neutral-700 hover:text-neutral-900 transition-colors"
+          >
+            <svg
+              className="h-4 w-4 transition-transform duration-300"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              {expandedSections.price ? (
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M20 12H4"
+                />
+              ) : (
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4v16m8-8H4"
+                />
+              )}
+            </svg>
+          </button>
+        </div>
+        <div
+          className={`transition-all duration-300 ease-in-out ${
+            expandedSections.price
+              ? "max-h-[500px] opacity-100 pt-2 overflow-visible"
+              : "max-h-0 opacity-0 pt-0 overflow-hidden"
+          }`}
+        >
+          <div className="space-y-3 px-1">
             <div className="flex items-center gap-2 text-sm text-neutral-600">
               <span>₹{Math.round(priceRange[0])}</span>
               <span>-</span>
               <span>₹{Math.round(priceRange[1])}</span>
             </div>
-            <input
-              type="range"
-              min={filterOptions.priceRange.min}
-              max={filterOptions.priceRange.max}
-              value={priceRange[1]}
-              onChange={(e) =>
-                setPriceRange([priceRange[0], parseFloat(e.target.value)])
-              }
-              className="w-full"
-            />
+            {/* Dual Range Slider */}
+            <div className="dual-range-slider relative h-6 py-2 overflow-visible">
+              <style dangerouslySetInnerHTML={{ __html: sliderStyles }} />
+              {/* Track background */}
+              <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-neutral-200 -translate-y-1/2 pointer-events-none"></div>
+              {/* Active range */}
+              <div
+                className="absolute top-1/2 h-0.5 bg-[#FF9AA2] -translate-y-1/2 pointer-events-none"
+                style={{
+                  left: `${
+                    ((priceRange[0] - filterOptions.priceRange.min) /
+                      (filterOptions.priceRange.max -
+                        filterOptions.priceRange.min)) *
+                    100
+                  }%`,
+                  width: `${
+                    ((priceRange[1] - priceRange[0]) /
+                      (filterOptions.priceRange.max -
+                        filterOptions.priceRange.min)) *
+                    100
+                  }%`,
+                }}
+              ></div>
+              {/* Min slider thumb area */}
+              <div
+                className="absolute top-1/2 -translate-y-1/2 w-4 h-4 z-20 cursor-grab active:cursor-grabbing"
+                style={{
+                  left: `calc(${
+                    ((priceRange[0] - filterOptions.priceRange.min) /
+                      (filterOptions.priceRange.max -
+                        filterOptions.priceRange.min)) *
+                    100
+                  }% - 8px)`,
+                }}
+                onMouseDown={(e) => {
+                  const startX = e.clientX;
+                  const startValue = priceRange[0];
+                  const range =
+                    filterOptions.priceRange.max - filterOptions.priceRange.min;
+                  const sliderWidth =
+                    (e.currentTarget.parentElement as HTMLElement)
+                      ?.offsetWidth || 0;
+
+                  const handleMove = (moveEvent: MouseEvent) => {
+                    const deltaX = moveEvent.clientX - startX;
+                    const deltaValue = (deltaX / sliderWidth) * range;
+                    const newValue = Math.max(
+                      filterOptions.priceRange.min,
+                      Math.min(
+                        filterOptions.priceRange.max,
+                        startValue + deltaValue
+                      )
+                    );
+                    setPriceRange([
+                      Math.min(newValue, priceRange[1]),
+                      priceRange[1],
+                    ]);
+                  };
+
+                  const handleUp = () => {
+                    document.removeEventListener("mousemove", handleMove);
+                    document.removeEventListener("mouseup", handleUp);
+                  };
+
+                  document.addEventListener("mousemove", handleMove);
+                  document.addEventListener("mouseup", handleUp);
+                }}
+              >
+                <div className="w-4 h-4 rounded-full bg-[#FF9AA2] border-2 border-white shadow-md"></div>
+              </div>
+              {/* Max slider thumb area */}
+              <div
+                className="absolute top-1/2 -translate-y-1/2 w-4 h-4 z-20 cursor-grab active:cursor-grabbing"
+                style={{
+                  left: `calc(${
+                    ((priceRange[1] - filterOptions.priceRange.min) /
+                      (filterOptions.priceRange.max -
+                        filterOptions.priceRange.min)) *
+                    100
+                  }% - 8px)`,
+                }}
+                onMouseDown={(e) => {
+                  const startX = e.clientX;
+                  const startValue = priceRange[1];
+                  const range =
+                    filterOptions.priceRange.max - filterOptions.priceRange.min;
+                  const sliderWidth =
+                    (e.currentTarget.parentElement as HTMLElement)
+                      ?.offsetWidth || 0;
+
+                  const handleMove = (moveEvent: MouseEvent) => {
+                    const deltaX = moveEvent.clientX - startX;
+                    const deltaValue = (deltaX / sliderWidth) * range;
+                    const newValue = Math.max(
+                      filterOptions.priceRange.min,
+                      Math.min(
+                        filterOptions.priceRange.max,
+                        startValue + deltaValue
+                      )
+                    );
+                    setPriceRange([
+                      priceRange[0],
+                      Math.max(newValue, priceRange[0]),
+                    ]);
+                  };
+
+                  const handleUp = () => {
+                    document.removeEventListener("mousemove", handleMove);
+                    document.removeEventListener("mouseup", handleUp);
+                  };
+
+                  document.addEventListener("mousemove", handleMove);
+                  document.addEventListener("mouseup", handleUp);
+                }}
+              >
+                <div className="w-4 h-4 rounded-full bg-[#FF9AA2] border-2 border-white shadow-md"></div>
+              </div>
+            </div>
             <div className="flex gap-2">
               <input
                 type="number"
@@ -394,10 +588,10 @@ function FiltersSidebar({ onFiltersChange }: FiltersSidebarProps) {
               />
             </div>
           </div>
-        )}
+        </div>
       </div>
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between border-b border-neutral-200 pb-4 pt-4">
         <label className="text-sm font-medium text-neutral-700">
           Fast shipping
         </label>
@@ -416,7 +610,7 @@ function FiltersSidebar({ onFiltersChange }: FiltersSidebarProps) {
         </button>
       </div>
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between border-b border-neutral-200 pb-4 pt-4">
         <label className="text-sm font-medium text-neutral-700">
           Only available items
         </label>
@@ -435,35 +629,48 @@ function FiltersSidebar({ onFiltersChange }: FiltersSidebarProps) {
         </button>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-2 border-b border-neutral-200 pb-4 pt-4">
         <div className="flex items-center justify-between">
-          <label className="block text-sm font-medium text-neutral-700">
+          <label className="block text-sm font-medium text-neutral-700 uppercase">
             Product Type
           </label>
           <button
             type="button"
             onClick={() => toggleSection("productType")}
-            className="text-neutral-500 hover:text-neutral-700"
+            className="text-neutral-700 hover:text-neutral-900 transition-colors"
           >
             <svg
-              className={`h-4 w-4 transition-transform ${
-                expandedSections.productType ? "rotate-180" : ""
-              }`}
+              className="h-4 w-4 transition-transform duration-300"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 9l-7 7-7-7"
-              />
+              {expandedSections.productType ? (
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M20 12H4"
+                />
+              ) : (
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4v16m8-8H4"
+                />
+              )}
             </svg>
           </button>
         </div>
-        {expandedSections.productType && (
-          <div className="space-y-2 pt-2">
+        <div
+          className={`overflow-hidden transition-all duration-300 ease-in-out ${
+            expandedSections.productType
+              ? "max-h-96 opacity-100 pt-2"
+              : "max-h-0 opacity-0 pt-0"
+          }`}
+        >
+          <div className="space-y-2">
             {filterOptions.subcategories.map((sub) => {
               const isSelected = selectedSubcategories.includes(sub._id);
               return (
@@ -482,38 +689,51 @@ function FiltersSidebar({ onFiltersChange }: FiltersSidebarProps) {
               );
             })}
           </div>
-        )}
+        </div>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-2 border-b border-neutral-200 pb-4 pt-4">
         <div className="flex items-center justify-between">
-          <label className="block text-sm font-medium text-neutral-700">
+          <label className="block text-sm font-medium text-neutral-700 uppercase">
             Material
           </label>
           <button
             type="button"
             onClick={() => toggleSection("material")}
-            className="text-neutral-500 hover:text-neutral-700"
+            className="text-neutral-700 hover:text-neutral-900 transition-colors"
           >
             <svg
-              className={`h-4 w-4 transition-transform ${
-                expandedSections.material ? "rotate-180" : ""
-              }`}
+              className="h-4 w-4 transition-transform duration-300"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 9l-7 7-7-7"
-              />
+              {expandedSections.material ? (
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M20 12H4"
+                />
+              ) : (
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4v16m8-8H4"
+                />
+              )}
             </svg>
           </button>
         </div>
-        {expandedSections.material && (
-          <div className="space-y-2 pt-2">
+        <div
+          className={`overflow-hidden transition-all duration-300 ease-in-out ${
+            expandedSections.material
+              ? "max-h-96 opacity-100 pt-2"
+              : "max-h-0 opacity-0 pt-0"
+          }`}
+        >
+          <div className="space-y-2">
             {filterOptions.materials.map((material) => {
               const isSelected = selectedMaterials.includes(material);
               return (
@@ -532,7 +752,7 @@ function FiltersSidebar({ onFiltersChange }: FiltersSidebarProps) {
               );
             })}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

@@ -2,14 +2,36 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter, usePathname } from "next/navigation";
+import { useCallback } from "react";
 
 export default function Footer() {
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const handleNavLinkClick = useCallback(
+    (href: string, e: React.MouseEvent<HTMLAnchorElement>) => {
+      if (href.startsWith("#")) {
+        e.preventDefault();
+
+        if (pathname !== "/") {
+          router.push(`/${href}`);
+        } else {
+          const element = document.querySelector(href);
+          if (element) {
+            setTimeout(() => {
+              element.scrollIntoView({ behavior: "smooth", block: "start" });
+            }, 50);
+          }
+        }
+      }
+    },
+    [pathname, router]
+  );
   return (
     <footer className="bg-[#EED4CA] w-full">
       <div className="mx-auto w-full px-8 py-10">
-        {/* Top Section */}
         <div className="flex flex-col md:flex-row items-start justify-between mb-8">
-          {/* Logo Section */}
           <div className="mb-6 md:mb-0">
             <Link href="/" className="flex items-center">
               <Image
@@ -26,18 +48,20 @@ export default function Footer() {
             <Link href="/products" className="transition hover:text-[#FF9AA2]">
               Products
             </Link>
-            <Link href="#about" className="transition hover:text-[#FF9AA2]">
+            <Link
+              href="#about"
+              onClick={(e) => handleNavLinkClick("#about", e)}
+              className="transition hover:text-[#FF9AA2]"
+            >
               About Us
             </Link>
-            <Link href="#contact" className="transition hover:text-[#FF9AA2]">
+            <Link href="/contact" className="transition hover:text-[#FF9AA2]">
               Contact Us
             </Link>
           </div>
         </div>
 
-        {/* Middle Section */}
         <div className="flex flex-col md:flex-row items-start justify-between gap-6 mb-6">
-          {/* Testimonial */}
           <div className="flex-1 max-w-2xl">
             <p className="text-neutral-900 text-sm leading-relaxed">
               Crafting thoughtful corporate gifts that make every moment
@@ -45,9 +69,7 @@ export default function Footer() {
             </p>
           </div>
 
-          {/* Social Media Icons */}
           <div className="flex items-center gap-4">
-            {/* X (Twitter) Icon */}
             <a
               href="https://twitter.com"
               target="_blank"
@@ -66,7 +88,6 @@ export default function Footer() {
               </svg>
             </a>
 
-            {/* LinkedIn Icon */}
             <a
               href="https://linkedin.com"
               target="_blank"
@@ -85,7 +106,6 @@ export default function Footer() {
               </svg>
             </a>
 
-            {/* Facebook Icon */}
             <a
               href="https://facebook.com"
               target="_blank"

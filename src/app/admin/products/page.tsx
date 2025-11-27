@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -56,7 +57,9 @@ export default function AdminProductsPage() {
       const response = await fetch("/api/products");
       if (response.ok) {
         const data = await response.json();
-        setProducts(data);
+        // Handle new API response format (object with products array) or legacy format (array)
+        const productsArray = Array.isArray(data) ? data : data.products || [];
+        setProducts(productsArray);
       }
     } catch (error) {
       console.error("Error fetching products:", error);
@@ -228,10 +231,13 @@ export default function AdminProductsPage() {
                     <TableCell>
                       <div className="flex items-center space-x-3">
                         {getPrimaryImage(product) ? (
-                          <img
+                          <Image
                             src={getPrimaryImage(product)!}
                             alt={product.name}
+                            width={48}
+                            height={48}
                             className="w-12 h-12 object-cover rounded-lg"
+                            unoptimized
                           />
                         ) : (
                           <div className="w-12 h-12 bg-[#FFE5E7] rounded-lg flex items-center justify-center">
@@ -264,9 +270,7 @@ export default function AdminProductsPage() {
                     </TableCell>
                     <TableCell>
                       <Badge
-                        variant={
-                          product.type === "combo" ? "default" : "info"
-                        }
+                        variant={product.type === "combo" ? "default" : "info"}
                       >
                         {product.type === "combo" ? "Combo" : "Single"}
                       </Badge>

@@ -313,6 +313,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
 
   const imageWrapRef = useRef<HTMLDivElement | null>(null);
   const [isMagnifying, setIsMagnifying] = useState(false);
+  const [isHoveringArrow, setIsHoveringArrow] = useState(false);
   const [lensPosition, setLensPosition] = useState<{ x: number; y: number }>({
     x: 0,
     y: 0,
@@ -328,6 +329,101 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
     currentColorImages.length > 0 ? currentColorImages : fallbackImages;
 
   const mainImage = galleryImages[selectedImage] ?? galleryImages[0];
+
+  // Navigation functions for image gallery
+  const handlePreviousImage = useCallback(() => {
+    setSelectedImage((prev) => {
+      if (prev === 0) {
+        return galleryImages.length - 1; // Wrap to last image
+      }
+      return prev - 1;
+    });
+  }, [galleryImages.length]);
+
+  const handleNextImage = useCallback(() => {
+    setSelectedImage((prev) => {
+      if (prev === galleryImages.length - 1) {
+        return 0; // Wrap to first image
+      }
+      return prev + 1;
+    });
+  }, [galleryImages.length]);
+
+  // Calculate which dots to show
+  const getVisibleDots = useCallback(() => {
+    const totalImages = galleryImages.length;
+    if (totalImages <= 5) {
+      // Show all dots if 5 or fewer
+      return {
+        dots: Array.from({ length: totalImages }, (_, i) => i),
+        showSmallLeft: false,
+        showSmallRight: false,
+      };
+    }
+
+    // More than 5 images - show max 5 dots
+    const current = selectedImage;
+
+    if (current <= 3) {
+      // Show first 5 dots (0-4), with 5th (index 4) smaller
+      return {
+        dots: [0, 1, 2, 3, 4],
+        showSmallLeft: false,
+        showSmallRight: true,
+      };
+    } else if (current >= totalImages - 4) {
+      // Show last 5 dots, with 1st smaller if not at the very start
+      const startIndex = totalImages - 5;
+      return {
+        dots: [
+          startIndex,
+          startIndex + 1,
+          startIndex + 2,
+          startIndex + 3,
+          startIndex + 4,
+        ],
+        showSmallLeft: startIndex > 0,
+        showSmallRight: false,
+      };
+    } else {
+      // Show 5 dots centered around current (current-1, current, current+1, current+2, current+3)
+      // with first dot smaller
+      const startIndex = current - 1;
+      return {
+        dots: [startIndex, current, current + 1, current + 2, current + 3],
+        showSmallLeft: startIndex > 0,
+        showSmallRight: current + 3 < totalImages - 1,
+      };
+    }
+  }, [galleryImages.length, selectedImage]);
+
+  // Keyboard navigation for image gallery
+  useEffect(() => {
+    if (galleryImages.length <= 1) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't navigate if user is typing in an input field
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        handlePreviousImage();
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        handleNextImage();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [galleryImages.length, handlePreviousImage, handleNextImage]);
 
   const ratingCount = product.ratingsSummary?.count ?? 0;
   const ratingAverage = product.ratingsSummary?.average ?? 0;
@@ -470,7 +566,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
             <div
               ref={imageWrapRef}
               className="relative aspect-[10/10] overflow-hidden border border-[#efe5dc] bg-white rounded-2xl"
-              onMouseEnter={() => setIsMagnifying(true)}
+              onMouseEnter={() => !isHoveringArrow && setIsMagnifying(true)}
               onMouseLeave={() => setIsMagnifying(false)}
               onMouseMove={handleMouseMove}
             >
@@ -487,7 +583,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                 </div>
               )}
               {/* Lens overlay */}
-              {isMagnifying && mainImage && (
+              {isMagnifying && mainImage && !isHoveringArrow && (
                 <div
                   className="pointer-events-none absolute z-20 rounded-sm border border-white/70 shadow-[0_0_0_1px_rgba(0,0,0,0.25)]"
                   style={{
@@ -502,9 +598,74 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                   }}
                 />
               )}
+
+              {/* Navigation Arrows */}
+              {galleryImages.length > 1 && (
+                <>
+                  {/* Left Arrow */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handlePreviousImage();
+                    }}
+                    onMouseEnter={() => {
+                      setIsHoveringArrow(true);
+                      setIsMagnifying(false);
+                    }}
+                    onMouseLeave={() => setIsHoveringArrow(false)}
+                    className="absolute left-4 top-1/2 -translate-y-1/2 z-30 w-12 h-12 rounded-full bg-white/40 backdrop-blur-sm hover:bg-white/60 transition-all duration-200 flex items-center justify-center shadow-lg border border-neutral-200/30 hover:scale-110"
+                    aria-label="Previous image"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-6 w-6 text-neutral-700"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2.5}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M15 19l-7-7 7-7"
+                      />
+                    </svg>
+                  </button>
+
+                  {/* Right Arrow */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleNextImage();
+                    }}
+                    onMouseEnter={() => {
+                      setIsHoveringArrow(true);
+                      setIsMagnifying(false);
+                    }}
+                    onMouseLeave={() => setIsHoveringArrow(false)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 z-30 w-12 h-12 rounded-full bg-white/40 backdrop-blur-sm hover:bg-white/60 transition-all duration-200 flex items-center justify-center shadow-lg border border-neutral-200/30 hover:scale-110"
+                    aria-label="Next image"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-6 w-6 text-neutral-700"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2.5}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M9 5l7 7-7 7"
+                      />
+                    </svg>
+                  </button>
+                </>
+              )}
             </div>
             {/* Zoom preview to the right of the image (outside overflow-hidden) */}
-            {isMagnifying && mainImage && (
+            {isMagnifying && mainImage && !isHoveringArrow && (
               <div
                 className="pointer-events-none absolute top-0 z-30 hidden lg:block"
                 style={{
@@ -546,6 +707,39 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                   backgroundColor: "#fff",
                 }}
               />
+            )}
+
+            {/* Dots/Pagination Indicators */}
+            {galleryImages.length > 1 && (
+              <div className="flex items-center justify-center gap-2 mt-4">
+                {(() => {
+                  const { dots, showSmallLeft, showSmallRight } =
+                    getVisibleDots();
+                  return dots.map((dotIndex, idx) => {
+                    const isActive = dotIndex === selectedImage;
+                    const isSmall =
+                      (idx === 0 && showSmallLeft) ||
+                      (idx === dots.length - 1 && showSmallRight);
+
+                    return (
+                      <button
+                        key={dotIndex}
+                        onClick={() => setSelectedImage(dotIndex)}
+                        className={`rounded-full transition-all duration-200 ${
+                          isActive
+                            ? isSmall
+                              ? "w-2 h-2 bg-[#d88766]"
+                              : "w-2.5 h-2.5 bg-[#d88766]"
+                            : isSmall
+                            ? "w-1.5 h-1.5 bg-neutral-400 hover:bg-neutral-500"
+                            : "w-2 h-2 bg-neutral-300 hover:bg-neutral-400"
+                        }`}
+                        aria-label={`Go to image ${dotIndex + 1}`}
+                      />
+                    );
+                  });
+                })()}
+              </div>
             )}
           </div>
 
@@ -628,12 +822,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
           {product.sizes && product.sizes.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center justify-between text-sm font-semibold">
-                <span>
-                  Select Size{" "}
-                  <span className="text-[#6f6f6f] font-normal">
-                    {selectedSize ?? product.sizes[0]}
-                  </span>
-                </span>
+                <span>Select Size</span>
                 <button className="text-xs text-[#6f6f6f] underline underline-offset-2">
                   Size guide
                 </button>
@@ -730,7 +919,9 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
           {hasCustomizationImages && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <p className="text-sm text-[#525252]">Print Locations</p>
+                <p className="text-sm font-semibold text-[#525252]">
+                  Upload your design
+                </p>
                 {printLocations.length < 3 && (
                   <button
                     onClick={handleAddPrintLocation}
@@ -826,11 +1017,15 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                             height: `${box.height * 100}%`,
                           }}
                         >
-                          <img
-                            src={location.uploadedImage}
-                            alt="uploaded design"
-                            className="h-full w-full object-contain"
-                          />
+                          <div className="relative w-full h-full">
+                            <Image
+                              src={location.uploadedImage}
+                              alt="uploaded design"
+                              fill
+                              className="object-contain"
+                              unoptimized
+                            />
+                          </div>
                         </div>
                         <button
                           onClick={() => handleDeleteImage(index)}
@@ -886,7 +1081,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                     href={`/product/customize/${product._id}`}
                     className="flex w-full items-center justify-center rounded-2xl bg-[#c86446] px-6 py-3 text-center text-white text-sm shadow shadow-[#c86446]/30 transition hover:bg-[#ba5839]"
                   >
-                    Sketch your image
+                    Customize your design
                   </Link>
                 </div>
               )}
@@ -1044,7 +1239,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
               {isInCart ? "View in Bag" : "Add to Bag"}
             </button>
             <button className="flex flex-1 items-center justify-center rounded-2xl bg-[var(--color-button-secondary)] px-6 py-4 text-sm text-[#4a4a4a] hover:bg-[var(--color-button-secondary-hover)] transition">
-              Buy a trial
+              Buy a sample
             </button>
             {/* Wishlist Button */}
             <button

@@ -3,6 +3,11 @@ import mongoose from 'mongoose';
 import Product from '@/models/Product';
 import connectDB from '@/lib/db';
 import { auth } from '@/lib/auth';
+import {
+  buildSearchTerms,
+  buildMongoSearchQuery,
+  comboMatchesSearch,
+} from '@/utils/search';
 
 type ProductWithStock = {
   hasColorOptions?: boolean;
@@ -39,26 +44,22 @@ export async function GET(req: Request) {
     const subcategories = searchParams.get("subcategories")?.split(",").filter(Boolean);
     const material = searchParams.get("material");
     const sortBy = searchParams.get("sortBy") || "default";
+    const bulkOrders = searchParams.get("bulkOrders") === "true";
 
     const query: Record<string, unknown> = {};
 
-    // Category/Subcategory filter
     if (category) {
       if (!mongoose.Types.ObjectId.isValid(category)) {
         return NextResponse.json({ error: "Invalid category id" }, { status: 400 });
       }
 
-      // Check if this is a subcategory ID by finding which category contains it
       const Category = (await import('@/models/Category')).default;
 
-      // First check if it's a main category
       const categoryDoc = await Category.findById(category);
 
       if (categoryDoc) {
-        // It's a main category
         query.category = category;
       } else {
-        // Check if it's a subcategory by searching all categories
         const allCategories = await Category.find({});
         const parentCategory = allCategories.find((cat) => {
           const catData = cat as { subcategories?: Array<{ _id: string | { toString(): string } }> };
@@ -87,7 +88,6 @@ export async function GET(req: Request) {
       }
     }
 
-    // Subcategories filter (multiple)
     if (subcategories && subcategories.length > 0) {
       const validSubcategoryIds = subcategories.filter(id => mongoose.Types.ObjectId.isValid(id));
       if (validSubcategoryIds.length > 0) {
@@ -95,16 +95,72 @@ export async function GET(req: Request) {
       }
     }
 
-    // Search filter
+    let correctedSearchQuery: string | null = null;
     if (search) {
-      query.$or = [
-        { name: { $regex: search, $options: "i" } },
-        { tags: { $exists: true, $ne: [], $in: [new RegExp(search, "i")] } },
-        { description: { $regex: search, $options: "i" } },
-      ];
+      const allProducts = await Product.find({})
+        .select('name tags')
+        .limit(1000)
+        .lean();
+
+      const allProductWords: string[] = [];
+      for (const product of allProducts) {
+        const productData = product as { name?: string; tags?: string[] };
+        if (productData.name) {
+          const words = productData.name.split(/\s+/);
+          allProductWords.push(...words);
+        }
+        if (productData.tags && Array.isArray(productData.tags)) {
+          allProductWords.push(...productData.tags);
+        }
+      }
+
+      const uniqueWords = Array.from(new Set(allProductWords.map(w => w.toLowerCase())));
+
+      const { correctedQuery, searchTerms, expandedTerms } = buildSearchTerms(search, uniqueWords);
+      correctedSearchQuery = correctedQuery !== search ? correctedQuery : null;
+
+      const orConditions = buildMongoSearchQuery(search, correctedQuery, searchTerms, expandedTerms);
+      query.$or = orConditions;
+
+      const allCombos = await Product.find({
+        type: 'combo',
+        comboItems: { $exists: true, $ne: [] }
+      })
+        .populate({
+          path: 'comboItems.productId',
+          model: Product,
+          select: 'name tags description'
+        })
+        .lean();
+
+      const matchingComboIds: string[] = [];
+      for (const combo of allCombos) {
+        if (comboMatchesSearch(combo as {
+          comboItems?: Array<{
+            productId?: {
+              name?: string;
+              tags?: string[];
+              description?: string;
+            } | string;
+          }>;
+        }, searchTerms, expandedTerms)) {
+          const comboId = (combo as { _id?: string | { toString(): string } })._id;
+          const id = typeof comboId === 'string' ? comboId : comboId?.toString() || '';
+          if (id && !matchingComboIds.includes(id)) {
+            matchingComboIds.push(id);
+          }
+        }
+      }
+
+      if (matchingComboIds.length > 0) {
+        const existingOr = (query.$or as Array<Record<string, unknown>>) || [];
+        query.$or = [
+          ...existingOr,
+          { _id: { $in: matchingComboIds.map(id => new mongoose.Types.ObjectId(id)) } }
+        ];
+      }
     }
 
-    // Price filter
     if (minPrice || maxPrice) {
       const priceQuery: { $gte?: number; $lte?: number } = {};
       if (minPrice) {
@@ -132,14 +188,15 @@ export async function GET(req: Request) {
       }
     }
 
-    // Fast shipping filter (deliveryTimeInDays <= 3)
     if (fastShipping) {
       query.deliveryTimeInDays = { $lte: 3 };
     }
 
-    let products = await Product.find(query).populate("category", "name").lean();
+    let products = await Product.find(query)
+      .populate("category", "name")
+      .lean()
+      .select("-reviews -ratingsSummary");
 
-    // Color filter (needs to be done after fetching because colors are in nested structure)
     if (colors && colors.length > 0) {
       products = products.filter((product) => {
         const productData = product as unknown as ProductWithStock & { hasColorOptions?: boolean; colors?: Map<string, unknown> | Record<string, unknown> };
@@ -153,12 +210,17 @@ export async function GET(req: Request) {
       });
     }
 
-    // Only available filter (stock > 0)
     if (onlyAvailable) {
       products = products.filter((product) => getTotalStock(product as unknown as ProductWithStock) > 0);
     }
 
-    // Apply sorting
+    if (bulkOrders) {
+      products = products.filter((product) => {
+        const minQuantity = (product as { minQuantity?: number }).minQuantity;
+        return minQuantity !== undefined && minQuantity > 1;
+      });
+    }
+
     switch (sortBy) {
       case "price-low-high":
         products.sort((a, b) => {
@@ -219,11 +281,21 @@ export async function GET(req: Request) {
         });
         break;
       default:
-        // Default: keep original order (or could be by relevance/featured)
         break;
     }
 
-    return NextResponse.json(products);
+    const response: {
+      products: unknown[];
+      correctedQuery?: string;
+      originalQuery?: string;
+    } = { products };
+
+    if (correctedSearchQuery && search) {
+      response.correctedQuery = correctedSearchQuery;
+      response.originalQuery = search;
+    }
+
+    return NextResponse.json(response);
   } catch (error) {
     console.error("Error fetching products:", error);
     return NextResponse.json({ error: `Server error ${error}` }, { status: 500 });
@@ -246,7 +318,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid category id" }, { status: 400 });
     }
 
-    // Handle subCategory: convert empty string to null, validate ObjectId if provided
     if (productData.subCategory === "" || productData.subCategory === null || productData.subCategory === undefined) {
       productData.subCategory = null;
     } else if (productData.subCategory && !mongoose.Types.ObjectId.isValid(productData.subCategory)) {
@@ -257,10 +328,8 @@ export async function POST(req: Request) {
 
     await connectDB();
 
-    // Auto-generate tags for combo products if not provided
     if (productData.type === "combo" && productData.comboItems?.length > 0) {
       if (!productData.tags || productData.tags.length === 0) {
-        // Populate combo items to get product names
         const comboProductIds = productData.comboItems.map((item: { productId: string }) => item.productId);
         const comboProducts = await Product.find({
           _id: { $in: comboProductIds },

@@ -576,12 +576,16 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
         break;
       case "logo":
         content = element.imageData ? (
-          <img
-            src={element.imageData}
-            alt="Logo"
-            className="w-full h-full object-contain pointer-events-none"
-            draggable={false}
-          />
+          <div className="relative w-full h-full">
+            <Image
+              src={element.imageData}
+              alt="Logo"
+              fill
+              className="object-contain pointer-events-none"
+              draggable={false}
+              unoptimized
+            />
+          </div>
         ) : (
           <div className="w-full h-full flex items-center justify-center text-xs text-neutral-400 border-2 border-dashed border-neutral-300 rounded">
             Logo

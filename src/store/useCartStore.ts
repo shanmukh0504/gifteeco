@@ -52,7 +52,7 @@ interface CartState {
   ) => number;
   clearCart: () => Promise<void>;
   syncWithServer: (serverItems: CartItemWithProduct[]) => void;
-  fetchCart: (token?: string) => Promise<void>;
+  fetchCart: (token?: string, silent?: boolean) => Promise<void>;
 }
 
 const useCartStore = create<CartState>()(
@@ -85,8 +85,8 @@ const useCartStore = create<CartState>()(
           set({
             items: currentItems.map((i) =>
               i.productId === item.productId &&
-              i.size === item.size &&
-              i.color === item.color
+                i.size === item.size &&
+                i.color === item.color
                 ? { ...i, quantity: i.quantity + item.quantity }
                 : i
             ),
@@ -116,8 +116,8 @@ const useCartStore = create<CartState>()(
                 throw new Error("Failed to add to cart");
               }
             } else {
-              // Fetch updated cart from server
-              await get().fetchCart(token);
+              // Fetch updated cart from server silently (no loading state)
+              await get().fetchCart(token, true);
             }
           } catch (error) {
             // Revert local change on error
@@ -175,8 +175,8 @@ const useCartStore = create<CartState>()(
                 throw new Error("Failed to remove from cart");
               }
             } else {
-              // Fetch updated cart from server
-              await get().fetchCart(token);
+              // Fetch updated cart from server silently (no loading state)
+              await get().fetchCart(token, true);
             }
           } catch (error) {
             // Restore local change on error
@@ -236,8 +236,8 @@ const useCartStore = create<CartState>()(
                 throw new Error(errorData.error || "Failed to update cart");
               }
             } else {
-              // Fetch updated cart from server
-              await get().fetchCart(token);
+              // Fetch updated cart from server silently (no loading state)
+              await get().fetchCart(token, true);
             }
           } catch (error) {
             // Restore local change on error
@@ -268,19 +268,21 @@ const useCartStore = create<CartState>()(
             customization: item.customization,
           };
         });
-        
+
         // Ensure itemsWithDetails also have productId set
         const itemsWithDetailsFixed = serverItems.map((item) => ({
           ...item,
           productId: item.product?._id?.toString() || item.product?._id || item.productId || (typeof item.product === 'string' ? item.product : ''),
         }));
-        
+
         set({ items, itemsWithDetails: itemsWithDetailsFixed });
       },
-      fetchCart: async (token?: string) => {
+      fetchCart: async (token?: string, silent = false) => {
         if (!token) return;
 
-        set({ isLoading: true });
+        if (!silent) {
+          set({ isLoading: true });
+        }
         try {
           const response = await fetch("/api/cart", {
             headers: {
@@ -295,7 +297,9 @@ const useCartStore = create<CartState>()(
         } catch (error) {
           console.error("Error fetching cart:", error);
         } finally {
-          set({ isLoading: false });
+          if (!silent) {
+            set({ isLoading: false });
+          }
         }
       },
     }),
@@ -307,8 +311,8 @@ const useCartStore = create<CartState>()(
         }
         return {
           getItem: () => null,
-          setItem: () => {},
-          removeItem: () => {},
+          setItem: () => { },
+          removeItem: () => { },
         };
       }),
     }

@@ -16,15 +16,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
           path: "category",
           select: "name slug",
         },
-      });
+      })
+      .lean(); // Use lean() for faster queries
 
     if (!product) {
       return NextResponse.json({ error: 'Product not found' }, { status: 404 });
     }
 
-    // Increment viewCount
-    product.viewCount = (product.viewCount || 0) + 1;
-    await product.save();
+    // Increment viewCount asynchronously (non-blocking)
+    Product.findByIdAndUpdate(id, { $inc: { viewCount: 1 } }).catch((err) => {
+      console.error("Error incrementing viewCount:", err);
+    });
 
     return NextResponse.json(product);
   } catch (error) {
@@ -52,6 +54,24 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       return NextResponse.json({ error: "Invalid subcategory id" }, { status: 400 });
     } else if (body.subCategory) {
       body.subCategory = new mongoose.Types.ObjectId(body.subCategory);
+    }
+
+    // Ensure material and deliveryTimeInDays are explicitly set (even if null)
+    // This ensures they are updated in the database
+    if (body.material === undefined) {
+      // If not provided, don't change it
+      delete body.material;
+    } else {
+      // If provided (including null), ensure it's set
+      body.material = body.material === "" ? null : body.material;
+    }
+
+    if (body.deliveryTimeInDays === undefined) {
+      // If not provided, don't change it
+      delete body.deliveryTimeInDays;
+    } else {
+      // If provided (including null), ensure it's set
+      body.deliveryTimeInDays = body.deliveryTimeInDays === "" ? null : body.deliveryTimeInDays;
     }
 
     const product = await Product.findByIdAndUpdate(
