@@ -40,31 +40,43 @@ type ProductDoc = {
   minQuantity?: number;
 };
 
-type ProductWithColors = {
+function getPrimaryImage(item: {
   product?: {
     colors?: Record<string, { images?: string[] }>;
     noColor?: { images?: string[] };
     images?: string[];
   };
-  noColor?: { images?: string[] };
-  images?: string[];
-};
+  color?: string;
+}): string | undefined {
+  const product = item.product;
 
-function getPrimaryImage(product: ProductWithColors): string | undefined {
-  if (product?.product?.colors) {
-    const colorEntries = Object.values(product.product.colors);
-    const firstColor = colorEntries[0] as { images?: string[] } | undefined;
-    return firstColor?.images?.[0];
+  if (item.color && product?.colors && product.colors[item.color]) {
+    const colorData = product.colors[item.color];
+    if (colorData?.images?.[0]) {
+      return colorData.images[0];
+    }
   }
-  return (
-    product?.product?.noColor?.images?.[0] || product?.product?.images?.[0]
-  );
+
+  if (product?.colors && Object.keys(product.colors).length > 0) {
+    const colorEntries = Object.values(product.colors);
+    const firstColor = colorEntries[0] as { images?: string[] } | undefined;
+    if (firstColor?.images?.[0]) {
+      return firstColor.images[0];
+    }
+  }
+
+  return product?.noColor?.images?.[0] || product?.images?.[0];
 }
 
 function getPrimaryImageForDoc(p: ProductDoc): string | undefined {
-  const colorEntries = p.colors ? Object.values(p.colors) : [];
-  const firstColor = colorEntries[0];
-  return firstColor?.images?.[0] ?? p.noColor?.images?.[0];
+  if (p.colors && Object.keys(p.colors).length > 0) {
+    const colorEntries = Object.values(p.colors);
+    const firstColor = colorEntries[0];
+    if (firstColor?.images?.[0]) {
+      return firstColor.images[0];
+    }
+  }
+  return p.noColor?.images?.[0] ?? undefined;
 }
 
 function hasCustomizationOptions(product: ProductDoc): boolean {
@@ -387,6 +399,7 @@ export default function CartPage() {
     state: "",
     pincode: "",
   });
+  const [updatingItem, setUpdatingItem] = useState<string | null>(null);
 
   const fetchAddresses = useCallback(async () => {
     if (!token) return;
@@ -442,6 +455,10 @@ export default function CartPage() {
       }
     }
 
+    // Create unique key for this item
+    const itemKey = `${productId}-${size || ""}-${color || ""}`;
+    setUpdatingItem(itemKey);
+
     try {
       await updateQuantity(productId, newQuantity, size, color, token, () =>
         setShowAuthModal(true)
@@ -451,6 +468,8 @@ export default function CartPage() {
       const errorMessage =
         error instanceof Error ? error.message : "Failed to update quantity";
       toast.error(errorMessage);
+    } finally {
+      setUpdatingItem(null);
     }
   };
 
@@ -660,24 +679,51 @@ export default function CartPage() {
                 ) : (
                   itemsWithDetails.map((item, index) => {
                     const product = item.product;
-                    const img = getPrimaryImage(item);
+                    const img = getPrimaryImage({ product, color: item.color });
                     const customization = item.customization;
-                    const hasCustomization =
-                      !!customization &&
-                      ((customization.printLocations &&
-                        (customization.printLocations as string[]).length >
-                          0) ||
-                        (customization.elements &&
-                          Object.keys(
-                            customization.elements as Record<string, unknown>
-                          ).length > 0) ||
-                        !!customization.sketchedImage);
+                    let hasCustomization = false;
+                    if (customization) {
+                      // Check for printLocations with uploaded images (not just empty arrays)
+                      if (customization.printLocations) {
+                        const printLocations =
+                          customization.printLocations as Array<{
+                            slot?: string;
+                            uploadedImage?: string;
+                            elements?: unknown[];
+                          }>;
+                        if (
+                          Array.isArray(printLocations) &&
+                          printLocations.length > 0
+                        ) {
+                          // Check if any printLocation has an uploaded image
+                          hasCustomization = printLocations.some(
+                            (loc) =>
+                              loc &&
+                              loc.uploadedImage &&
+                              loc.uploadedImage.trim() !== ""
+                          );
+                        }
+                      }
+                      // Check for sketched image (this indicates user did a sketch)
+                      if (
+                        !hasCustomization &&
+                        customization.sketchedImage === true
+                      ) {
+                        hasCustomization = true;
+                      }
+                    }
                     const price = product?.price || 0;
+                    const itemKey = `${item.productId}-${item.size || ""}-${
+                      item.color || ""
+                    }`;
+                    const isUpdating = updatingItem === itemKey;
 
                     return (
                       <div
                         key={`${item.productId}-${item.size}-${item.color}-${index}`}
-                        className="bg-white rounded-2xl p-4 flex gap-4 items-center"
+                        className={`bg-white rounded-2xl p-4 flex gap-4 items-center transition ${
+                          isUpdating ? "opacity-50 pointer-events-none" : ""
+                        }`}
                       >
                         <div className="w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden bg-[#FFE5E7]">
                           {img ? (
@@ -696,14 +742,25 @@ export default function CartPage() {
                         </div>
 
                         <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-neutral-900 mb-2 line-clamp-2">
-                            {product?.name || "Product"}
-                          </h3>
-                          <div className="flex items-center gap-3 mb-2">
-                            <span className="text-lg text-neutral-900">
-                              ₹{Math.round(price)}
-                            </span>
+                          <div className="flex items-start justify-between gap-4 mb-2">
+                            <h3 className="font-semibold text-neutral-900 line-clamp-2 flex-1">
+                              {product?.name || "Product"}
+                            </h3>
                           </div>
+                          {(item.size || item.color) && (
+                            <div className="flex items-center gap-2 mb-2 text-sm text-neutral-600">
+                              {item.size && (
+                                <span className="px-2 py-1 rounded-md bg-neutral-100">
+                                  Size: {item.size}
+                                </span>
+                              )}
+                              {item.color && (
+                                <span className="px-2 py-1 rounded-md bg-neutral-100">
+                                  Color: {item.color}
+                                </span>
+                              )}
+                            </div>
+                          )}
                           {hasCustomization && (
                             <Link
                               href={`/product/${item.productId}`}
@@ -729,76 +786,82 @@ export default function CartPage() {
                           )}
                         </div>
 
-                        <div className="flex items-center gap-4">
-                          <div className="flex items-center gap-1 bg-neutral-200 rounded-full px-1 py-1">
+                        <div className="flex flex-col items-end gap-4">
+                          <span className="text-lg font-semibold text-neutral-900">
+                            ₹{Math.round(price * item.quantity)}
+                          </span>
+                          <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-1 bg-neutral-200 rounded-full px-1 py-1">
+                              <button
+                                onClick={() =>
+                                  handleQuantityChange(
+                                    item.productId,
+                                    item.quantity - 1,
+                                    item.size,
+                                    item.color
+                                  )
+                                }
+                                disabled={isUpdating}
+                                className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-neutral-300 transition text-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                              >
+                                <svg
+                                  width="14"
+                                  height="14"
+                                  viewBox="0 0 16 16"
+                                  fill="none"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                >
+                                  <path
+                                    d="M4 8H12"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                  />
+                                </svg>
+                              </button>
+                              <span className="w-8 text-center text-neutral-900">
+                                {item.quantity}
+                              </span>
+                              <button
+                                onClick={() =>
+                                  handleQuantityChange(
+                                    item.productId,
+                                    item.quantity + 1,
+                                    item.size,
+                                    item.color
+                                  )
+                                }
+                                className="w-7 h-7 flex items-center justify-center rounded-full bg-[var(--color-button)] hover:bg-[var(--color-button-hover)] transition text-white cursor-pointer"
+                              >
+                                <svg
+                                  width="14"
+                                  height="14"
+                                  viewBox="0 0 16 16"
+                                  fill="none"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                >
+                                  <path
+                                    d="M8 4V12M4 8H12"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                  />
+                                </svg>
+                              </button>
+                            </div>
                             <button
                               onClick={() =>
-                                handleQuantityChange(
+                                handleRemove(
                                   item.productId,
-                                  item.quantity - 1,
                                   item.size,
                                   item.color
                                 )
                               }
-                              className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-neutral-300 transition text-neutral-700"
+                              className="text-[var(--color-button)] hover:text-[var(--color-button-hover)] transition text-sm cursor-pointer"
                             >
-                              <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 16 16"
-                                fill="none"
-                                xmlns="http://www.w3.org/2000/svg"
-                              >
-                                <path
-                                  d="M4 8H12"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                />
-                              </svg>
-                            </button>
-                            <span className="w-8 text-center text-neutral-900">
-                              {item.quantity}
-                            </span>
-                            <button
-                              onClick={() =>
-                                handleQuantityChange(
-                                  item.productId,
-                                  item.quantity + 1,
-                                  item.size,
-                                  item.color
-                                )
-                              }
-                              className="w-7 h-7 flex items-center justify-center rounded-full bg-[var(--color-button)] hover:bg-[var(--color-button-hover)] transition text-white"
-                            >
-                              <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 16 16"
-                                fill="none"
-                                xmlns="http://www.w3.org/2000/svg"
-                              >
-                                <path
-                                  d="M8 4V12M4 8H12"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                />
-                              </svg>
+                              Delete
                             </button>
                           </div>
-                          <button
-                            onClick={() =>
-                              handleRemove(
-                                item.productId,
-                                item.size,
-                                item.color
-                              )
-                            }
-                            className="text-[var(--color-button)] hover:text-[var(--color-button-hover)] transition text-sm"
-                          >
-                            Remove
-                          </button>
                         </div>
                       </div>
                     );
@@ -853,7 +916,7 @@ export default function CartPage() {
                         router.push("/checkout");
                       }}
                     >
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 cursor-pointer">
                         <Image
                           src="/card.svg"
                           alt="Card"
@@ -864,7 +927,10 @@ export default function CartPage() {
                       </div>
                       <span>₹{Math.round(subtotal)}</span>
                     </button>
-                    <button className="w-full py-3 px-4 bg-[var(--color-button-secondary)] text-neutral-700 rounded-lg hover:bg-[var(--color-button-secondary-hover)] transition">
+                    <button
+                      onClick={() => router.push("/contact")}
+                      className="w-full py-3 px-4 bg-[var(--color-button-secondary)] text-neutral-700 rounded-lg hover:bg-[var(--color-button-secondary-hover)] transition cursor-pointer"
+                    >
                       Enquire for more details
                     </button>
                   </div>

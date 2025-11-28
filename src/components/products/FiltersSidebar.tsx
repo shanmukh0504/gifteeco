@@ -194,7 +194,7 @@ function FiltersSidebar({ onFiltersChange }: FiltersSidebarProps) {
           // Only set default price range if not specified in URL
           if (!searchParams.get("minPrice") && !searchParams.get("maxPrice")) {
             isInitializingFromAPI.current = true;
-            setPriceRange([data.priceRange.min, data.priceRange.max]);
+          setPriceRange([data.priceRange.min, data.priceRange.max]);
             // Reset flag after state update would have been processed
             setTimeout(() => {
               isInitializingFromAPI.current = false;
