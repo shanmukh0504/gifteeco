@@ -374,7 +374,7 @@ export default function Navbar() {
                                 <Link
                                   key={sub._id}
                                   href={`/products?category=${sub._id}`}
-                                  className="block text-sm text-neutral-600 hover:text-[#FF9AA2] transition-colors py-1"
+                                  className="block text-sm text-neutral-600 hover:text-[#CF6144] transition-colors py-1"
                                   onClick={() => setShowDropdown(false)}
                                 >
                                   {sub.name}
@@ -452,44 +452,18 @@ export default function Navbar() {
                   <Link
                     href="/products?bulkOrders=true"
                     onClick={() => setShowBulkDropdown(false)}
-                    className="block px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 hover:text-[#FF9AA2] transition-colors"
+                    className="block px-4 py-2.5 text-sm text-neutral-700 hover:text-[#CF6144] transition-colors"
                   >
                     <div className="flex items-center gap-2">
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
-                        />
-                      </svg>
                       <span>Explore Bulk Products</span>
                     </div>
                   </Link>
                   <Link
                     href="/contact"
                     onClick={() => setShowBulkDropdown(false)}
-                    className="block px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 hover:text-[#FF9AA2] transition-colors border-t border-neutral-100"
+                    className="block px-4 py-2.5 text-sm text-neutral-700 hover:text-[#CF6144] transition-colors border-t border-neutral-100"
                   >
                     <div className="flex items-center gap-2">
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                        />
-                      </svg>
                       <span>Contact for Bulk Orders</span>
                     </div>
                   </Link>

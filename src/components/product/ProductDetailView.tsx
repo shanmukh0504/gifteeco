@@ -93,6 +93,8 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
   const { isAuthenticated, token } = useAuthStore();
   const addItem = useCartStore((state) => state.addItem);
   const getItemQuantity = useCartStore((state) => state.getItemQuantity);
+  // Subscribe to cart items to trigger re-renders when cart changes
+  useCartStore((state) => state.items);
   const wishlistItems = useWishlistStore((state) => state.items);
   const isWishlisted = isAuthenticated && wishlistItems.includes(product._id);
   const toggleWishlist = useWishlistStore((state) => state.toggleItem);
@@ -114,19 +116,28 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
   const cartSize = selectedSize || undefined;
   const cartColor = selectedColor !== "Gold" ? selectedColor : undefined;
   const [isMounted, setIsMounted] = useState(false);
+  const [justAddedToCart, setJustAddedToCart] = useState(false);
 
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
+  // Recalculate cart quantity when cart items change
   const cartQuantity = isMounted
     ? getItemQuantity(product._id, cartSize, cartColor)
     : 0;
-  const isInCart = cartQuantity > 0;
+  // Show "View in Bag" only if item is in cart AND was just added in this session
+  const shouldShowViewInBag = cartQuantity > 0 && justAddedToCart;
+
   const [selectedQty, setSelectedQty] = useState<number | null>(
     quantityPresets[0]
   );
   const [customQty, setCustomQty] = useState("");
+
+  // Reset justAddedToCart when size, color, or quantity changes
+  useEffect(() => {
+    setJustAddedToCart(false);
+  }, [selectedSize, selectedColor, selectedQty, customQty]);
   const searchParams = useSearchParams();
   const [selectedImage, setSelectedImage] = useState(0);
   const [selectedPrintSize, setSelectedPrintSize] = useState(printSizes[0]);
@@ -259,7 +270,6 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
     }
   }, [product._id, product.ratingsSummary?.count]);
 
-  // Load saved design from customize page
   useEffect(() => {
     const loadDesign = async () => {
       const customized = searchParams.get("customized");
@@ -285,7 +295,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                       locations.push({
                         slot,
                         uploadedImage: compositeImage,
-                        elements: slotElements, // Store elements for reference
+                        elements: slotElements,
                       });
                     }
                   }
@@ -709,7 +719,6 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
               />
             )}
 
-            {/* Dots/Pagination Indicators */}
             {galleryImages.length > 1 && (
               <div className="flex items-center justify-center gap-2 mt-4">
                 {(() => {
@@ -1058,7 +1067,6 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                           onChange={(e) => {
                             const file = e.target.files?.[0];
                             if (file) handleImageUpload(index, file);
-                            // Reset input so same file can be selected again
                             e.target.value = "";
                           }}
                           className="hidden"
@@ -1116,7 +1124,6 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
             <p className="text-sm text-[#525252]">Select Color</p>
             <div className="flex gap-3">
               {colorEntries.map(([key], idx) => {
-                // Try to use hex from key if it's a hex code, otherwise use swatch
                 const colorValue = key.startsWith("#")
                   ? key
                   : colorSwatches[idx % colorSwatches.length];
@@ -1159,21 +1166,14 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                   return;
                 }
 
-                // Check current cart state with selected size and color
-                const checkSize = selectedSize || undefined;
-                const checkColor =
-                  selectedColor !== "Gold" ? selectedColor : undefined;
-                const currentCartQuantity = getItemQuantity(
-                  product._id,
-                  checkSize,
-                  checkColor
-                );
-
-                // If already in cart, navigate to cart page
-                if (currentCartQuantity > 0) {
+                if (shouldShowViewInBag) {
                   router.push("/cart");
                   return;
                 }
+
+                const checkSize = selectedSize || undefined;
+                const checkColor =
+                  selectedColor !== "Gold" ? selectedColor : undefined;
 
                 const finalQuantity =
                   selectedQty !== null
@@ -1187,7 +1187,6 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                   return;
                 }
 
-                // Check for saved design from customize page
                 let savedDesign = null;
                 const savedDesignData = localStorage.getItem(
                   `customization_${product._id}`
@@ -1200,7 +1199,6 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                   }
                 }
 
-                // Combine print locations and saved design
                 let customizationData = undefined;
                 if (printLocations.length > 0 || savedDesign) {
                   customizationData = {
@@ -1225,6 +1223,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                     () => setShowAuthModal(true)
                   );
                   toast.success("Added to cart!");
+                  setJustAddedToCart(true);
                 } catch (error) {
                   const errorMessage =
                     error instanceof Error
@@ -1234,14 +1233,26 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                   console.error("Error adding to cart:", error);
                 }
               }}
-              className="flex flex-1 items-center justify-center rounded-2xl bg-[var(--color-button)] px-6 py-4 text-sm text-white shadow shadow-[var(--color-button)]/30 hover:bg-[var(--color-button-hover)] transition"
+              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[var(--color-button)] px-6 py-4 text-sm text-white shadow shadow-[var(--color-button)]/30 hover:bg-[var(--color-button-hover)] transition"
             >
-              {isInCart ? "View in Bag" : "Add to Bag"}
+              {shouldShowViewInBag ? (
+                <>
+                  View in Bag
+                  <Image
+                    src="/right.svg"
+                    alt=""
+                    width={16}
+                    height={16}
+                    className="ml-1"
+                  />
+                </>
+              ) : (
+                "Add to Bag"
+              )}
             </button>
             <button className="flex flex-1 items-center justify-center rounded-2xl bg-[var(--color-button-secondary)] px-6 py-4 text-sm text-[#4a4a4a] hover:bg-[var(--color-button-secondary-hover)] transition">
               Buy a sample
             </button>
-            {/* Wishlist Button */}
             <button
               onClick={async () => {
                 if (!isAuthenticated || !token) {
@@ -1291,7 +1302,6 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
               </svg>
             </button>
 
-            {/* Share Button */}
             <button
               onClick={() => setShowShareDropdown(true)}
               className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[#e5dfd7] text-[#7a7a7a] hover:border-[#cbb7a3] transition"
@@ -1313,20 +1323,17 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
               </svg>
             </button>
 
-            {/* Share Modal */}
             <Modal
               isOpen={showShareDropdown}
               onClose={() => setShowShareDropdown(false)}
               size="md"
             >
               <div className="space-y-6">
-                {/* Social Media Icons and Names */}
                 <div>
                   <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wide mb-4">
                     Share Via
                   </h3>
                   <div className="grid grid-cols-2 gap-3">
-                    {/* WhatsApp */}
                     <button
                       onClick={() => {
                         const url = `${window.location.origin}/product/${product._id}`;
@@ -1349,7 +1356,6 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                       <span className="text-sm text-neutral-700">WhatsApp</span>
                     </button>
 
-                    {/* Instagram */}
                     <button
                       onClick={() => {
                         window.open(`https://www.instagram.com/`, "_blank");
@@ -1372,7 +1378,6 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                       </span>
                     </button>
 
-                    {/* X (Twitter) */}
                     <button
                       onClick={() => {
                         const url = `${window.location.origin}/product/${product._id}`;
@@ -1399,7 +1404,6 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                       </span>
                     </button>
 
-                    {/* Facebook */}
                     <button
                       onClick={() => {
                         const url = `${window.location.origin}/product/${product._id}`;
@@ -1423,7 +1427,6 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                       <span className="text-sm text-neutral-700">Facebook</span>
                     </button>
 
-                    {/* LinkedIn */}
                     <button
                       onClick={() => {
                         const url = `${window.location.origin}/product/${product._id}`;
@@ -1449,7 +1452,6 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                   </div>
                 </div>
 
-                {/* Link with Copy Button */}
                 <div className="pt-4 border-t border-neutral-200">
                   <div className="flex items-center gap-3">
                     <div className="flex-1 px-4 py-2 bg-neutral-50 rounded-lg border border-neutral-200 relative overflow-hidden">
@@ -1458,7 +1460,6 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                           ? `${window.location.origin}/product/${product._id}`
                           : ""}
                       </p>
-                      {/* Fade gradient on the right */}
                       <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-neutral-50 to-transparent pointer-events-none" />
                     </div>
                     <button
@@ -1482,9 +1483,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
           </div>
         </div>
       </div>
-      {/* Product Sections */}
       <ProductSections />
-      {/* Reviews Section */}
       {ratingCount > 0 && (
         <ReviewsSection
           productId={product._id}
@@ -1498,7 +1497,6 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
   );
 }
 
-// Product Section Component
 type ProductDoc = {
   _id: string;
   name: string;
@@ -1862,7 +1860,6 @@ function ReviewsSection({
   const [reviewComment, setReviewComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // Calculate rating distribution
   const ratingDistribution = useMemo(() => {
     const dist = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
     reviews.forEach((review) => {
@@ -1873,7 +1870,6 @@ function ReviewsSection({
     return dist;
   }, [reviews]);
 
-  // Sort reviews
   const sortedReviews = useMemo(() => {
     const sorted = [...reviews];
     switch (sortBy) {
@@ -1934,7 +1930,6 @@ function ReviewsSection({
         setShowWriteReview(false);
         setReviewRating(0);
         setReviewComment("");
-        // Reload page to show new review
         window.location.reload();
       } else {
         const error = await response.json();
@@ -2016,7 +2011,6 @@ function ReviewsSection({
           </div>
         </div>
 
-        {/* Write Review Form */}
         {showWriteReview && (
           <div className="mb-8 rounded-lg border border-neutral-200 bg-white p-6">
             <h3 className="mb-4 text-lg font-semibold text-neutral-900">
@@ -2075,7 +2069,6 @@ function ReviewsSection({
         )}
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-          {/* Left Column - Rating Summary */}
           <div className="lg:col-span-1">
             <div className="rounded-lg border border-neutral-200 bg-white p-6">
               <div className="mb-4">
@@ -2102,7 +2095,6 @@ function ReviewsSection({
                 </div>
               </div>
 
-              {/* Rating Distribution */}
               <div className="space-y-2">
                 {[5, 4, 3, 2, 1].map((rating) => {
                   const count =
@@ -2134,7 +2126,6 @@ function ReviewsSection({
             </div>
           </div>
 
-          {/* Right Column - Reviews List */}
           <div className="lg:col-span-2">
             <div className="space-y-6">
               {sortedReviews.map((review, index) => (

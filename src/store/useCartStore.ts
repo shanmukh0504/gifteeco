@@ -25,6 +25,7 @@ interface CartState {
   items: CartItem[];
   itemsWithDetails: CartItemWithProduct[];
   isLoading: boolean;
+  isAddingToCart: boolean;
   addItem: (
     item: CartItem,
     token?: string,
@@ -61,6 +62,7 @@ const useCartStore = create<CartState>()(
       items: [],
       itemsWithDetails: [],
       isLoading: false,
+      isAddingToCart: false,
       addItem: async (
         item: CartItem,
         token?: string,
@@ -72,6 +74,7 @@ const useCartStore = create<CartState>()(
           return;
         }
 
+        set({ isAddingToCart: true });
         const currentItems = get().items;
         const existing = currentItems.find(
           (i) =>
@@ -116,14 +119,20 @@ const useCartStore = create<CartState>()(
                 throw new Error("Failed to add to cart");
               }
             } else {
-              // Fetch updated cart from server silently (no loading state)
               await get().fetchCart(token, true);
             }
           } catch (error) {
-            // Revert local change on error
             set({ items: currentItems });
             throw error;
+          } finally {
+            setTimeout(() => {
+              set({ isAddingToCart: false });
+            }, 500);
           }
+        } else {
+          setTimeout(() => {
+            set({ isAddingToCart: false });
+          }, 500);
         }
       },
       removeItem: async (
