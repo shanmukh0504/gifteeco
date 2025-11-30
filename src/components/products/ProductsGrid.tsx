@@ -27,9 +27,15 @@ type Product = {
   >;
   deliveryTimeInDays?: number | null;
   minQuantity?: number;
+  colorKey?: string; // Added to track which color variant this is
 };
 
 function getPrimaryImage(p: Product): string | undefined {
+  // If product has a specific colorKey, show that color's image
+  if (p.colorKey && p.colors && p.colors[p.colorKey]) {
+    return p.colors[p.colorKey].images?.[0];
+  }
+  // Otherwise, show first available color or noColor image
   const colorEntries = p.colors ? Object.values(p.colors) : [];
   const firstColor = colorEntries[0];
   return firstColor?.images?.[0] ?? p.noColor?.images?.[0];
@@ -150,7 +156,16 @@ function ProductCard({ product }: { product: Product }) {
         initialMode="login"
       />
       <div className="group relative">
-        <Link href={`/product/${product._id}`} className="block">
+        <Link
+          href={`/product/${product._id}${
+            product.colorKey && product.colorKey !== "Gold"
+              ? `?color=${encodeURIComponent(product.colorKey)}`
+              : product.colorKey === "Gold"
+              ? "?color=default"
+              : ""
+          }`}
+          className="block"
+        >
           <div className="relative aspect-[4/5] w-full overflow-hidden rounded-2xl bg-white">
             {img ? (
               <Image
@@ -277,7 +292,10 @@ const ProductsGrid = memo(function ProductsGrid({
   return (
     <div className="grid grid-cols-2 gap-6 md:grid-cols-3 lg:grid-cols-4">
       {products.map((product) => (
-        <ProductCard key={product._id} product={product} />
+        <ProductCard
+          key={`${product._id}-${product.colorKey || "default"}`}
+          product={product}
+        />
       ))}
     </div>
   );

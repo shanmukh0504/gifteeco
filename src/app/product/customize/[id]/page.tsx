@@ -129,7 +129,7 @@ export default function CustomizeProductPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-10 md:px-6">
+    <div className="mx-auto max-w-7xl px-4 py-10 md:px-6 min-h-[100vh]">
       <ProductCustomizer product={product} />
     </div>
   );

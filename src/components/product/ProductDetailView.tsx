@@ -10,38 +10,123 @@ import useAuthStore from "@/store/useAuthStore";
 import useWishlistStore from "@/store/useWishlistStore";
 import AuthModal from "@/components/auth/AuthModal";
 import Modal from "@/components/ui/Modal";
+import ProductSectionSkeleton from "@/components/shared/ProductSectionSkeleton";
 import {
   SlotKey,
   SLOT_LABELS,
   DEFAULT_BOUNDING_BOXES,
   BoundingBox,
 } from "@/constants/customization";
+import QRCode from "qrcode";
+import { QRCodeSVG } from "qrcode.react";
 
-type DesignElement = {
-  id: string;
-  type: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  rotation?: number;
-  zIndex?: number;
-  textValue?: string;
-  textColor?: string;
-  fontSize?: number;
-  fontFamily?: string;
-  imageData?: string;
-  qrValue?: string;
-  shapeType?: string;
-  shapeColor?: string;
-  [key: string]: unknown;
-};
+function PrintLocationDropdown({
+  slots,
+  selectedSlot,
+  onSlotChange,
+  disabled,
+}: {
+  slots: SlotKey[];
+  selectedSlot: SlotKey;
+  onSlotChange: (slot: SlotKey) => void;
+  disabled?: boolean;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-type PrintLocation = {
-  slot: SlotKey;
-  uploadedImage?: string;
-  elements?: DesignElement[];
-};
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsOpen(false);
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isOpen]);
+
+  return (
+    <div className="relative w-full" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        disabled={disabled}
+        className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg border border-neutral-200 bg-white hover:border-[var(--color-button)] hover:shadow-sm transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed group"
+      >
+        <span className="text-sm text-neutral-600">Location:</span>
+        <span className="text-sm font-semibold text-[var(--color-button)] flex-1 text-left">
+          {SLOT_LABELS[selectedSlot] || "Select"}
+        </span>
+        <svg
+          className={`w-4 h-4 text-neutral-400 transition-transform duration-200 ${
+            isOpen ? "rotate-180" : ""
+          }`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M19 9l-7 7-7-7"
+          />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div
+          className="absolute top-full left-0 right-0 mt-1 bg-white border border-neutral-200 rounded-lg shadow-lg z-50 overflow-hidden"
+          style={{
+            animation: "fadeInSlideDown 0.2s ease-out",
+          }}
+        >
+          <div className="py-1">
+            {slots.map((slot) => (
+              <button
+                key={slot}
+                type="button"
+                onClick={() => {
+                  onSlotChange(slot);
+                  setIsOpen(false);
+                }}
+                className={`w-full px-4 py-2 text-left text-sm transition-colors duration-150 ${
+                  selectedSlot === slot
+                    ? "bg-[var(--color-primary-soft)] text-[var(--color-button)] font-semibold"
+                    : "text-neutral-700 hover:bg-neutral-50"
+                }`}
+              >
+                {SLOT_LABELS[slot]}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+import {
+  loadDesign,
+  saveDesign,
+  type SavedDesign,
+  type DesignElement as SharedDesignElement,
+  type PrintLocation as SharedPrintLocation,
+} from "@/lib/designStorage";
+
+// Use shared DesignElement type
+type DesignElement = SharedDesignElement;
+
+// Use shared PrintLocation type
+type PrintLocation = SharedPrintLocation;
 
 type SlotCustomization = {
   enabled?: boolean;
@@ -92,6 +177,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
   const router = useRouter();
   const { isAuthenticated, token } = useAuthStore();
   const addItem = useCartStore((state) => state.addItem);
+  const removeItem = useCartStore((state) => state.removeItem);
   const getItemQuantity = useCartStore((state) => state.getItemQuantity);
   // Subscribe to cart items to trigger re-renders when cart changes
   useCartStore((state) => state.items);
@@ -99,6 +185,9 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
   const isWishlisted = isAuthenticated && wishlistItems.includes(product._id);
   const toggleWishlist = useWishlistStore((state) => state.toggleItem);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [hasBoughtSample, setHasBoughtSample] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_checkingSample, setCheckingSample] = useState(false);
 
   const colorEntries: ColorEntry[] = useMemo(() => {
     if (product.colors && Object.keys(product.colors).length) {
@@ -108,7 +197,40 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
     return [["Gold", defaultColor]];
   }, [product]);
 
-  const [selectedColor, setSelectedColor] = useState(colorEntries[0][0]);
+  const searchParams = useSearchParams();
+
+  // Get color from URL params, default to first color
+  const colorFromUrl = searchParams.get("color");
+  const [selectedColor, setSelectedColor] = useState(() => {
+    if (colorFromUrl) {
+      // If URL has "default", map it to the first color entry (which might be "Gold")
+      if (colorFromUrl === "default") {
+        return colorEntries[0][0];
+      }
+      // Check if the color from URL exists in colorEntries
+      const colorExists = colorEntries.find(([key]) => key === colorFromUrl);
+      if (colorExists) {
+        return colorFromUrl;
+      }
+    }
+    return colorEntries[0][0];
+  });
+
+  // Update selectedColor when colorFromUrl changes
+  useEffect(() => {
+    if (colorFromUrl) {
+      if (colorFromUrl === "default") {
+        if (colorEntries[0][0] !== selectedColor) {
+          setSelectedColor(colorEntries[0][0]);
+        }
+      } else {
+        const colorExists = colorEntries.find(([key]) => key === colorFromUrl);
+        if (colorExists && colorFromUrl !== selectedColor) {
+          setSelectedColor(colorFromUrl);
+        }
+      }
+    }
+  }, [colorFromUrl, colorEntries, selectedColor]);
   const [selectedSize, setSelectedSize] = useState<string | null>(
     product.sizes?.[0] ?? null
   );
@@ -122,30 +244,83 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
     setIsMounted(true);
   }, []);
 
-  // Recalculate cart quantity when cart items change
-  const cartQuantity = isMounted
-    ? getItemQuantity(product._id, cartSize, cartColor)
-    : 0;
-  // Show "View in Bag" only if item is in cart AND was just added in this session
-  const shouldShowViewInBag = cartQuantity > 0 && justAddedToCart;
+  // Check if user has already bought a sample
+  useEffect(() => {
+    const checkSamplePurchase = async () => {
+      if (!isAuthenticated || !token || minQuantity === 1) {
+        setHasBoughtSample(false);
+        return;
+      }
+
+      setCheckingSample(true);
+      try {
+        const response = await fetch(
+          `/api/products/${product._id}/has-sample`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          setHasBoughtSample(data.hasSample || false);
+        }
+      } catch (error) {
+        console.error("Error checking sample purchase:", error);
+      } finally {
+        setCheckingSample(false);
+      }
+    };
+
+    checkSamplePurchase();
+  }, [isAuthenticated, token, product._id, minQuantity]);
 
   const [selectedQty, setSelectedQty] = useState<number | null>(
     quantityPresets[0]
   );
   const [customQty, setCustomQty] = useState("");
 
-  // Reset justAddedToCart when size, color, or quantity changes
+  // Reset justAddedToCart when size, color, quantity, or customization changes
   useEffect(() => {
     setJustAddedToCart(false);
   }, [selectedSize, selectedColor, selectedQty, customQty]);
-  const searchParams = useSearchParams();
   const [selectedImage, setSelectedImage] = useState(0);
   const [selectedPrintSize, setSelectedPrintSize] = useState(printSizes[0]);
   const [printLocations, setPrintLocations] = useState<PrintLocation[]>([]);
+
+  // Get current customization state for cart quantity check (must be after printLocations declaration)
+  const currentCustomization = useMemo(() => {
+    const savedDesign = loadDesign(product._id);
+    if (printLocations.length > 0 || savedDesign) {
+      return {
+        printLocations:
+          printLocations.length > 0 ? printLocations : undefined,
+        printSize: selectedPrintSize,
+        elements: savedDesign?.elements || undefined,
+        sketchedImage: savedDesign ? true : undefined,
+      };
+    }
+    return undefined;
+  }, [product._id, printLocations, selectedPrintSize]);
+
+  // Recalculate cart quantity when cart items change
+  const cartQuantity = isMounted
+    ? getItemQuantity(product._id, cartSize, cartColor, currentCustomization)
+    : 0;
+  // Show "View in Bag" only if item is in cart AND was just added in this session
+  const shouldShowViewInBag = cartQuantity > 0 && justAddedToCart;
+
+  // Reset justAddedToCart when customization changes
+  useEffect(() => {
+    setJustAddedToCart(false);
+  }, [printLocations, selectedPrintSize]);
   const [uploadingImages, setUploadingImages] = useState<
     Record<number, boolean>
   >({});
   const [showShareDropdown, setShowShareDropdown] = useState(false);
+  const [isChangingColor, setIsChangingColor] = useState(false);
 
   const createCompositeImage = useCallback(
     async (elements: DesignElement[]): Promise<string | null> => {
@@ -211,13 +386,37 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
             img.src = element.imageData || "";
           });
         } else if (element.type === "qrcode" && element.qrValue) {
-          ctx.fillStyle = "#000000";
-          ctx.fillRect(x, y, width, height);
-          ctx.fillStyle = "#ffffff";
-          ctx.font = "12px Arial";
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.fillText("QR", x + width / 2, y + height / 2);
+          try {
+            // Generate QR code as data URL
+            const qrDataUrl = await QRCode.toDataURL(element.qrValue, {
+              width: Math.max(width, 100),
+              margin: 1,
+              color: {
+                dark: "#000000",
+                light: "#FFFFFF",
+              },
+            });
+            // Draw QR code image on canvas
+            const qrImg = document.createElement("img");
+            await new Promise<void>((resolve, reject) => {
+              qrImg.onload = () => {
+                ctx.drawImage(qrImg, x, y, width, height);
+                resolve();
+              };
+              qrImg.onerror = () => reject(new Error("Failed to load QR code"));
+              qrImg.src = qrDataUrl;
+            });
+          } catch (error) {
+            console.error("Error generating QR code:", error);
+            // Fallback to placeholder
+            ctx.fillStyle = "#000000";
+            ctx.fillRect(x, y, width, height);
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "12px Arial";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("QR", x + width / 2, y + height / 2);
+          }
         } else if (element.type === "shape") {
           ctx.fillStyle = element.shapeColor || "#000000";
           if (element.shapeType === "circle") {
@@ -270,56 +469,125 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
     }
   }, [product._id, product.ratingsSummary?.count]);
 
+  // Load saved design on mount and when color changes
   useEffect(() => {
-    const loadDesign = async () => {
-      const customized = searchParams.get("customized");
-      if (customized === "true") {
-        const savedDesign = localStorage.getItem(
-          `customization_${product._id}`
-        );
+    const loadSavedDesign = async () => {
+      // Only show loading if color is actually changing (not initial load)
+      const prevColor = searchParams.get("color");
+      const currentColorKey =
+        selectedColor !== "Gold" ? selectedColor : "default";
+      const isColorChange = prevColor && prevColor !== currentColorKey;
+
+      if (isColorChange) {
+        setIsChangingColor(true);
+      }
+      try {
+        // Always check for saved design, not just when customized=true
+        const savedDesign = loadDesign(product._id);
+        const colorKey = selectedColor !== "Gold" ? selectedColor : "default";
+
         if (savedDesign) {
-          try {
-            const designData = JSON.parse(savedDesign);
-            if (designData.elements) {
-              const colorKey = designData.selectedColor || selectedColor;
-              const colorElements = designData.elements[colorKey];
-              if (colorElements) {
-                const locations: PrintLocation[] = [];
-                for (const slot of ["front", "back", "chest"] as SlotKey[]) {
-                  const slotElements = colorElements[slot];
-                  if (slotElements && slotElements.length > 0) {
-                    const compositeImage = await createCompositeImage(
-                      slotElements
-                    );
-                    if (compositeImage) {
-                      locations.push({
-                        slot,
-                        uploadedImage: compositeImage,
-                        elements: slotElements,
-                      });
-                    }
+          // First, check for printLocations (uploaded images)
+          if (
+            savedDesign.printLocations &&
+            savedDesign.printLocations[colorKey]
+          ) {
+            const savedPrintLocations = savedDesign.printLocations[colorKey];
+            // Always merge elements from savedDesign.elements if they exist
+            const colorElements =
+              savedDesign.elements?.[colorKey] ||
+              savedDesign.elements?.[savedDesign.selectedColor];
+            if (colorElements) {
+              // Merge elements into printLocations - elements take precedence
+              const updatedPrintLocations = savedPrintLocations.map((loc) => {
+                const slotElements = colorElements[loc.slot] || [];
+                // Always use elements from savedDesign.elements if available (they're the source of truth)
+                if (slotElements.length > 0) {
+                  return { ...loc, elements: slotElements };
+                }
+                // If no elements for this slot, keep the location as is
+                return loc;
+              });
+              setPrintLocations(updatedPrintLocations);
+            } else {
+              setPrintLocations(savedPrintLocations);
+            }
+
+            // Only show toast if coming from customize page
+            const customized = searchParams.get("customized");
+            if (customized === "true") {
+              toast.success("Your design has been loaded!");
+            }
+            return;
+          }
+
+          // If no printLocations, check for elements and create composite images
+          if (savedDesign.elements) {
+            const colorElements =
+              savedDesign.elements[colorKey] ||
+              savedDesign.elements[savedDesign.selectedColor];
+
+            if (colorElements) {
+              const locations: PrintLocation[] = [];
+
+              // Process all slots (front, back, chest)
+              for (const slot of ["front", "back", "chest"] as SlotKey[]) {
+                const slotElements = colorElements[slot] || [];
+                if (slotElements.length > 0) {
+                  // Create composite image for this slot
+                  const compositeImage = await createCompositeImage(
+                    slotElements
+                  );
+                  if (compositeImage) {
+                    locations.push({
+                      slot,
+                      uploadedImage: compositeImage,
+                      elements: slotElements,
+                    });
                   }
                 }
-                if (locations.length > 0) {
-                  setPrintLocations(locations);
+              }
+
+              if (locations.length > 0) {
+                setPrintLocations(locations);
+                // Save printLocations to design storage for future reference
+                const updatedDesign = {
+                  ...savedDesign,
+                  printLocations: {
+                    ...savedDesign.printLocations,
+                    [colorKey]: locations,
+                  },
+                };
+                saveDesign(updatedDesign);
+
+                // Only show toast if coming from customize page
+                const customized = searchParams.get("customized");
+                if (customized === "true") {
                   toast.success("Your design has been loaded!");
                 }
+              } else {
+                setPrintLocations([]);
               }
+            } else {
+              setPrintLocations([]);
             }
-          } catch (error) {
-            console.error("Error loading saved design:", error);
+          } else {
+            setPrintLocations([]);
           }
+        } else {
+          // No saved design, clear print locations
+          setPrintLocations([]);
         }
+      } catch (error) {
+        console.error("Error loading saved design:", error);
+        setPrintLocations([]);
+      } finally {
+        setIsChangingColor(false);
       }
     };
-    loadDesign();
-  }, [
-    product._id,
-    searchParams,
-    selectedColor,
-    product.customDefaults,
-    createCompositeImage,
-  ]);
+
+    loadSavedDesign();
+  }, [product._id, selectedColor, searchParams, createCompositeImage]);
 
   const imageWrapRef = useRef<HTMLDivElement | null>(null);
   const [isMagnifying, setIsMagnifying] = useState(false);
@@ -458,12 +726,24 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
     setLensPosition({ x, y });
   }
 
+  // Check if a slot is enabled for the current color
+  const isSlotEnabled = useCallback(
+    (slot: SlotKey): boolean => {
+      const currentColor = colorEntries.find(
+        ([key]) => key === selectedColor
+      )?.[1];
+      const slotConfig = currentColor?.customization?.[slot];
+      return slotConfig?.enabled !== false; // Default to enabled if not specified
+    },
+    [colorEntries, selectedColor]
+  );
+
   const availableSlots = useMemo(() => {
     const usedSlots = new Set(printLocations.map((loc) => loc.slot));
     return (["front", "back", "chest"] as SlotKey[]).filter(
-      (slot) => !usedSlots.has(slot)
+      (slot) => !usedSlots.has(slot) && isSlotEnabled(slot)
     );
-  }, [printLocations]);
+  }, [printLocations, isSlotEnabled]);
 
   const handleAddPrintLocation = () => {
     if (availableSlots.length === 0) {
@@ -474,13 +754,42 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
   };
 
   const handleRemovePrintLocation = (index: number) => {
-    setPrintLocations(printLocations.filter((_, i) => i !== index));
+    const updated = printLocations.filter((_, i) => i !== index);
+    setPrintLocations(updated);
+
+    // Update design storage to preserve other colors
+    const savedDesign = loadDesign(product._id);
+    const colorKey = selectedColor !== "Gold" ? selectedColor : "default";
+    if (savedDesign) {
+      const updatedDesign = {
+        ...savedDesign,
+        printLocations: {
+          ...savedDesign.printLocations,
+          [colorKey]: updated,
+        },
+      };
+      saveDesign(updatedDesign);
+    }
   };
 
   const handleSlotChange = (index: number, newSlot: SlotKey) => {
     const updated = [...printLocations];
     updated[index] = { ...updated[index], slot: newSlot };
     setPrintLocations(updated);
+
+    // Update design storage to preserve other colors
+    const savedDesign = loadDesign(product._id);
+    const colorKey = selectedColor !== "Gold" ? selectedColor : "default";
+    if (savedDesign) {
+      const updatedDesign = {
+        ...savedDesign,
+        printLocations: {
+          ...savedDesign.printLocations,
+          [colorKey]: updated,
+        },
+      };
+      saveDesign(updatedDesign);
+    }
   };
 
   const handleImageUpload = async (index: number, file: File) => {
@@ -509,6 +818,35 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
       const updated = [...printLocations];
       updated[index] = { ...updated[index], uploadedImage: data.url };
       setPrintLocations(updated);
+
+      // Save to design storage immediately - preserve other colors
+      const savedDesign = loadDesign(product._id);
+      const colorKey = selectedColor !== "Gold" ? selectedColor : "default";
+      if (savedDesign) {
+        const updatedDesign = {
+          ...savedDesign,
+          printLocations: {
+            ...savedDesign.printLocations,
+            [colorKey]: updated,
+          },
+          // Preserve elements for other colors
+          elements: savedDesign.elements || {},
+        };
+        saveDesign(updatedDesign);
+      } else {
+        // Create new design with just the uploaded image
+        const newDesign: SavedDesign = {
+          productId: product._id,
+          selectedColor: colorKey,
+          elements: {},
+          printLocations: {
+            [colorKey]: updated,
+          },
+          timestamp: Date.now(),
+        };
+        saveDesign(newDesign);
+      }
+
       toast.success("Image uploaded successfully!");
     } catch (error) {
       console.error("Error uploading image:", error);
@@ -518,10 +856,28 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
     }
   };
 
-  const handleDeleteImage = (index: number) => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _handleDeleteImage = (index: number) => {
     const updated = [...printLocations];
     updated[index] = { ...updated[index], uploadedImage: undefined };
     setPrintLocations(updated);
+
+    // Update design storage - preserve other colors
+    const savedDesign = loadDesign(product._id);
+    const colorKey = selectedColor !== "Gold" ? selectedColor : "default";
+    if (savedDesign) {
+      const updatedDesign = {
+        ...savedDesign,
+        printLocations: {
+          ...savedDesign.printLocations,
+          [colorKey]: updated,
+        },
+        // Preserve elements for other colors
+        elements: savedDesign.elements || {},
+      };
+      saveDesign(updatedDesign);
+    }
+
     toast.success("Image removed");
   };
 
@@ -540,6 +896,121 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
       product.noColor?.images?.[0]
     );
   };
+
+  // Get the product image with customizations overlaid
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _getProductImageWithCustomizations = useCallback((): string | null => {
+    if (printLocations.length === 0) return null;
+
+    // Find the front slot customization (primary display)
+    const frontLocation = printLocations.find((loc) => loc.slot === "front");
+    if (!frontLocation || !frontLocation.uploadedImage) return null;
+
+    // Return the mockup image URL - the uploaded image will be overlaid in the UI
+    return getMockupImage("front") || null;
+  }, [printLocations, selectedColor, colorEntries, product]);
+
+  // Check if we should show customized product image
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _hasCustomizations =
+    printLocations.length > 0 &&
+    printLocations.some(
+      (loc) => loc.uploadedImage || (loc.elements && loc.elements.length > 0)
+    );
+
+  // Render element without bounding boxes (for display only)
+  const renderElementForDisplay = useCallback((element: DesignElement) => {
+    const style: React.CSSProperties = {
+      position: "absolute",
+      left: `${element.x}%`,
+      top: `${element.y}%`,
+      width: `${element.width}%`,
+      height: `${element.height}%`,
+      transform: `rotate(${element.rotation}deg)`,
+      transformOrigin: "center center",
+      zIndex: element.zIndex || 0,
+      pointerEvents: "none",
+    };
+
+    let content: React.ReactNode = null;
+
+    switch (element.type) {
+      case "text":
+        content = (
+          <div
+            style={{
+              fontFamily: element.fontFamily,
+              fontSize: `${element.fontSize}px`,
+              color: element.textColor,
+              width: "100%",
+              height: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              wordWrap: "break-word",
+              overflowWrap: "break-word",
+              textAlign: "center",
+              padding: "2px",
+            }}
+          >
+            {element.textValue || "Your text"}
+          </div>
+        );
+        break;
+      case "logo":
+        content = element.imageData ? (
+          <div className="relative w-full h-full">
+            <Image
+              src={element.imageData}
+              alt="Logo"
+              fill
+              className="object-contain pointer-events-none"
+              draggable={false}
+              unoptimized
+            />
+          </div>
+        ) : null;
+        break;
+      case "qrcode":
+        content = element.qrValue ? (
+          <div className="w-full h-full flex items-center justify-center bg-white p-1">
+            <QRCodeSVG
+              value={element.qrValue}
+              size={200}
+              level="H"
+              includeMargin={false}
+              style={{ maxWidth: "100%", maxHeight: "100%" }}
+            />
+          </div>
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-white border-2 border-neutral-300 rounded">
+            <div className="text-xs text-neutral-500">QR Code</div>
+          </div>
+        );
+        break;
+      case "shape":
+        const shapeStyle: React.CSSProperties = {
+          width: "100%",
+          height: "100%",
+          backgroundColor: element.shapeColor,
+        };
+        if (element.shapeType === "circle") {
+          shapeStyle.borderRadius = "50%";
+        } else if (element.shapeType === "triangle") {
+          shapeStyle.clipPath = "polygon(50% 0%, 0% 100%, 100% 100%)";
+        }
+        content = <div style={shapeStyle} />;
+        break;
+    }
+
+    if (!content) return null;
+
+    return (
+      <div key={element.id} style={style}>
+        {content}
+      </div>
+    );
+  }, []);
 
   // Check if product has any customization mockup images
   const hasCustomizationImages = useMemo(() => {
@@ -569,7 +1040,15 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
   }, [colorEntries, product.noColor]);
 
   return (
-    <div className="space-y-12">
+    <div className="space-y-12 relative">
+      {isChangingColor && (
+        <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--color-button)]"></div>
+            <p className="text-sm text-neutral-600">Loading color...</p>
+          </div>
+        </div>
+      )}
       <div className="grid gap-12 lg:grid-cols-[minmax(0,40%)_minmax(0,60%)]">
         <div className="space-y-5">
           <div className="relative">
@@ -950,18 +1429,18 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
 
               {printLocations.map((location, index) => {
                 const box = getBoundingBox(location.slot);
-                const mockupImage = getMockupImage(location.slot);
-                const availableSlotsForThis = [
-                  ...availableSlots,
-                  location.slot,
-                ].sort((a, b) => {
-                  const order: Record<SlotKey, number> = {
-                    front: 0,
-                    back: 1,
-                    chest: 2,
-                  };
-                  return order[a] - order[b];
-                });
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                const _mockupImage = getMockupImage(location.slot);
+                const availableSlotsForThis = [...availableSlots, location.slot]
+                  .filter((slot) => isSlotEnabled(slot)) // Filter out disabled slots
+                  .sort((a, b) => {
+                    const order: Record<SlotKey, number> = {
+                      front: 0,
+                      back: 1,
+                      chest: 2,
+                    };
+                    return order[a] - order[b];
+                  });
 
                 return (
                   <div
@@ -973,19 +1452,11 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                         <label className="text-sm text-[#525252]">
                           Print Location {index + 1}
                         </label>
-                        <select
-                          value={location.slot}
-                          onChange={(e) =>
-                            handleSlotChange(index, e.target.value as SlotKey)
-                          }
-                          className="w-full rounded-2xl border border-[#e5dfd7] px-4 py-3 text-sm text-[#4a4a4a]"
-                        >
-                          {availableSlotsForThis.map((slot) => (
-                            <option key={slot} value={slot}>
-                              {SLOT_LABELS[slot]}
-                            </option>
-                          ))}
-                        </select>
+                        <PrintLocationDropdown
+                          slots={availableSlotsForThis}
+                          selectedSlot={location.slot}
+                          onSlotChange={(slot) => handleSlotChange(index, slot)}
+                        />
                       </div>
                       <button
                         onClick={() => handleRemovePrintLocation(index)}
@@ -1009,55 +1480,162 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                       </button>
                     </div>
 
-                    {location.uploadedImage && mockupImage && (
-                      <div className="relative aspect-[10/10] overflow-hidden rounded-2xl border border-[#e5dfd7] bg-white">
-                        <Image
-                          src={mockupImage}
-                          alt={`${location.slot} mockup`}
-                          fill
-                          className="object-cover"
-                        />
-                        <div
-                          className="absolute border-2 border-dashed border-[#c86446]/70 bg-white/5 backdrop-blur-sm"
-                          style={{
-                            left: `${box.x * 100}%`,
-                            top: `${box.y * 100}%`,
-                            width: `${box.width * 100}%`,
-                            height: `${box.height * 100}%`,
-                          }}
-                        >
-                          <div className="relative w-full h-full">
-                            <Image
-                              src={location.uploadedImage}
-                              alt="uploaded design"
-                              fill
-                              className="object-contain"
-                              unoptimized
-                            />
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => handleDeleteImage(index)}
-                          className="absolute right-2 top-2 rounded-full bg-red-500 p-1.5 text-white shadow hover:bg-red-600"
-                          title="Delete image"
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            className="h-4 w-4"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
+                    {/* Preview of customized product for this print location */}
+                    {(() => {
+                      const mockupImage = getMockupImage(location.slot);
+                      if (!mockupImage) return null;
+
+                      const hasContent =
+                        (location.elements && location.elements.length > 0) ||
+                        location.uploadedImage;
+
+                      const handleDeleteLocationCustomization = () => {
+                        // Clear this specific location's customization
+                        const updated = [...printLocations];
+                        updated[index] = {
+                          ...updated[index],
+                          uploadedImage: undefined,
+                          elements: undefined,
+                        };
+                        setPrintLocations(updated);
+
+                        // Update design storage - preserve other colors
+                        const savedDesign = loadDesign(product._id);
+                        const colorKey =
+                          selectedColor !== "Gold" ? selectedColor : "default";
+                        if (savedDesign) {
+                          // Remove elements for this slot
+                          const updatedElements = {
+                            ...(savedDesign.elements || {}),
+                          };
+                          if (updatedElements[colorKey]) {
+                            updatedElements[colorKey] = {
+                              ...updatedElements[colorKey],
+                              [location.slot]: [],
+                            };
+                          }
+
+                          // Update printLocations
+                          const updatedPrintLocations = {
+                            ...(savedDesign.printLocations || {}),
+                          };
+                          if (updatedPrintLocations[colorKey]) {
+                            updatedPrintLocations[colorKey] =
+                              updatedPrintLocations[colorKey].map((loc, idx) =>
+                                idx === index
+                                  ? {
+                                      ...loc,
+                                      uploadedImage: undefined,
+                                      elements: undefined,
+                                    }
+                                  : loc
+                              );
+                          }
+
+                          const updatedDesign = {
+                            ...savedDesign,
+                            elements: updatedElements,
+                            printLocations: updatedPrintLocations,
+                          };
+                          saveDesign(updatedDesign);
+                        }
+
+                        toast.success("Customization removed");
+                      };
+
+                      return (
+                        <div className="space-y-3">
+                          {/* Only show preview image if there's content */}
+                          {hasContent && (
+                            <div className="relative aspect-[10/10] overflow-hidden rounded-2xl border border-[#e5dfd7] bg-white">
+                              <Image
+                                src={mockupImage}
+                                alt={`${location.slot} mockup`}
+                                fill
+                                className="object-cover"
+                              />
+                              {/* Render elements or uploaded image */}
+                              {location.elements &&
+                              location.elements.length > 0 ? (
+                                <div
+                                  className="absolute pointer-events-none"
+                                  style={{
+                                    left: `${box.x * 100}%`,
+                                    top: `${box.y * 100}%`,
+                                    width: `${box.width * 100}%`,
+                                    height: `${box.height * 100}%`,
+                                    overflow: "hidden",
+                                  }}
+                                >
+                                  {location.elements
+                                    .sort(
+                                      (a, b) =>
+                                        (a.zIndex || 0) - (b.zIndex || 0)
+                                    )
+                                    .map((element) =>
+                                      renderElementForDisplay(element)
+                                    )}
+                                </div>
+                              ) : location.uploadedImage ? (
+                                <div
+                                  className="absolute border-2 border-dashed border-[#c86446]/70 bg-white/5 backdrop-blur-sm"
+                                  style={{
+                                    left: `${box.x * 100}%`,
+                                    top: `${box.y * 100}%`,
+                                    width: `${box.width * 100}%`,
+                                    height: `${box.height * 100}%`,
+                                  }}
+                                >
+                                  <div className="relative w-full h-full">
+                                    <Image
+                                      src={location.uploadedImage}
+                                      alt="uploaded design"
+                                      fill
+                                      className="object-contain"
+                                      unoptimized
+                                    />
+                                  </div>
+                                </div>
+                              ) : null}
+                              {/* Delete button */}
+                              <button
+                                onClick={handleDeleteLocationCustomization}
+                                className="absolute right-2 top-2 z-20 rounded-full bg-red-500 p-2 text-white shadow-lg hover:bg-red-600 transition"
+                                title="Delete customization"
+                              >
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  className="h-5 w-5"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                  strokeWidth={2}
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    d="M6 18L18 6M6 6l12 12"
+                                  />
+                                </svg>
+                              </button>
+                            </div>
+                          )}
+                          {/* Always show customize button */}
+                          <Link
+                            href={`/product/customize/${product._id}?slot=${
+                              location.slot
+                            }&color=${
+                              selectedColor !== "Gold"
+                                ? encodeURIComponent(selectedColor)
+                                : "default"
+                            }`}
+                            className="flex w-full items-center justify-center rounded-2xl bg-[#c86446] px-6 py-3 text-center text-white text-sm shadow shadow-[#c86446]/30 transition hover:bg-[#ba5839]"
                           >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                            />
-                          </svg>
-                        </button>
-                      </div>
-                    )}
+                            Customize your design
+                          </Link>
+                        </div>
+                      );
+                    })()}
 
                     <div className="flex gap-3">
                       <label className="flex-1 cursor-pointer">
@@ -1082,17 +1660,6 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                   </div>
                 );
               })}
-
-              {printLocations.length > 0 && (
-                <div className="pt-2">
-                  <Link
-                    href={`/product/customize/${product._id}`}
-                    className="flex w-full items-center justify-center rounded-2xl bg-[#c86446] px-6 py-3 text-center text-white text-sm shadow shadow-[#c86446]/30 transition hover:bg-[#ba5839]"
-                  >
-                    Customize your design
-                  </Link>
-                </div>
-              )}
 
               <div className="space-y-2">
                 <label className="text-sm text-[#525252]">Print Size</label>
@@ -1131,13 +1698,22 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                   <button
                     key={key}
                     onClick={() => {
-                      setSelectedColor(key);
-                      setSelectedImage(0);
+                      if (selectedColor === key || isChangingColor) return;
+                      const colorParam =
+                        key !== "Gold" ? encodeURIComponent(key) : "default";
+                      router.push(
+                        `/product/${product._id}?color=${colorParam}`
+                      );
                     }}
-                    className={`h-9 w-9 rounded-full border-3 flex items-center justify-center ${
+                    disabled={isChangingColor}
+                    className={`h-9 w-9 rounded-full border-3 flex items-center justify-center transition ${
                       selectedColor === key
                         ? "border-brand"
                         : "border-[#ece2d7]"
+                    } ${
+                      isChangingColor
+                        ? "opacity-50 cursor-wait"
+                        : "cursor-pointer hover:scale-110"
                     }`}
                     title={key}
                   >
@@ -1187,17 +1763,8 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                   return;
                 }
 
-                let savedDesign = null;
-                const savedDesignData = localStorage.getItem(
-                  `customization_${product._id}`
-                );
-                if (savedDesignData) {
-                  try {
-                    savedDesign = JSON.parse(savedDesignData);
-                  } catch (e) {
-                    console.error("Error parsing saved design:", e);
-                  }
-                }
+                // Load saved design using shared utility
+                const savedDesign = loadDesign(product._id);
 
                 let customizationData = undefined;
                 if (printLocations.length > 0 || savedDesign) {
@@ -1211,6 +1778,45 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                 }
 
                 try {
+                  // Check if we're editing an existing cart item
+                  const editingCartItemId =
+                    typeof window !== "undefined"
+                      ? sessionStorage.getItem(
+                          `editing-cart-item-${product._id}`
+                        )
+                      : null;
+
+                  if (editingCartItemId) {
+                    // We're editing an existing cart item - remove the old one and add the updated one
+                    const { items } = useCartStore.getState();
+
+                    // Find the old item to get its details for removal
+                    const oldItem = items.find(
+                      (item) => item.cartItemId === editingCartItemId
+                    );
+
+                    if (oldItem) {
+                      // Remove the old item
+                      await removeItem(
+                        oldItem.productId,
+                        oldItem.size,
+                        oldItem.color,
+                        token,
+                        () => setShowAuthModal(true),
+                        editingCartItemId,
+                        oldItem.customization
+                      );
+                    }
+
+                    // Clear the editing flag
+                    if (typeof window !== "undefined") {
+                      sessionStorage.removeItem(
+                        `editing-cart-item-${product._id}`
+                      );
+                    }
+                  }
+
+                  // Add the updated/new item
                   await addItem(
                     {
                       productId: product._id,
@@ -1222,7 +1828,9 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                     token,
                     () => setShowAuthModal(true)
                   );
-                  toast.success("Added to cart!");
+                  toast.success(
+                    editingCartItemId ? "Cart item updated!" : "Added to cart!"
+                  );
                   setJustAddedToCart(true);
                 } catch (error) {
                   const errorMessage =
@@ -1250,9 +1858,20 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                 "Add to Bag"
               )}
             </button>
-            <button className="flex flex-1 items-center justify-center rounded-2xl bg-[var(--color-button-secondary)] px-6 py-4 text-sm text-[#4a4a4a] hover:bg-[var(--color-button-secondary-hover)] transition">
-              Buy a sample
-            </button>
+            {minQuantity > 1 && !hasBoughtSample && (
+              <button
+                onClick={() => {
+                  if (!isAuthenticated || !token) {
+                    setShowAuthModal(true);
+                    return;
+                  }
+                  router.push(`/checkout?sample=${product._id}`);
+                }}
+                className="flex flex-1 items-center justify-center rounded-2xl bg-[var(--color-button-secondary)] px-6 py-4 text-sm text-[#4a4a4a] hover:bg-[var(--color-button-secondary-hover)] transition"
+              >
+                Buy a sample
+              </button>
+            )}
             <button
               onClick={async () => {
                 if (!isAuthenticated || !token) {
@@ -1483,7 +2102,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
           </div>
         </div>
       </div>
-      <ProductSections />
+      <ProductSections productId={product._id} />
       {ratingCount > 0 && (
         <ReviewsSection
           productId={product._id}
@@ -1514,9 +2133,61 @@ type ProductDoc = {
     }
   >;
   minQuantity?: number;
+  colorKey?: string; // Added to track which color variant this is
 };
 
+// Utility function to expand products by color
+function expandProductsByColor(products: ProductDoc[]): ProductDoc[] {
+  const expandedProducts: ProductDoc[] = [];
+  const seenProducts = new Set<string>(); // Track seen product-color combinations
+
+  products.forEach((product) => {
+    // If product already has a colorKey, it's already expanded, so add as is
+    if (product.colorKey) {
+      const uniqueKey = `${product._id}-${product.colorKey}`;
+      if (!seenProducts.has(uniqueKey)) {
+        seenProducts.add(uniqueKey);
+        expandedProducts.push(product);
+      }
+      return;
+    }
+
+    if (product.colors && Object.keys(product.colors).length > 0) {
+      // Create a product entry for each color
+      Object.entries(product.colors).forEach(([colorKey, colorData]) => {
+        const uniqueKey = `${product._id}-${colorKey}`;
+        if (!seenProducts.has(uniqueKey)) {
+          seenProducts.add(uniqueKey);
+          expandedProducts.push({
+            ...product,
+            colorKey, // Store the color key for the link
+            // Override images to show this color's image
+            noColor: undefined,
+            colors: {
+              [colorKey]: colorData,
+            },
+          });
+        }
+      });
+    } else {
+      // Product with no colors or only noColor, add as is
+      const uniqueKey = `${product._id}-default`;
+      if (!seenProducts.has(uniqueKey)) {
+        seenProducts.add(uniqueKey);
+        expandedProducts.push(product);
+      }
+    }
+  });
+
+  return expandedProducts;
+}
+
 function getPrimaryImageForDoc(p: ProductDoc): string | undefined {
+  // If product has a specific colorKey, show that color's image
+  if (p.colorKey && p.colors && p.colors[p.colorKey]) {
+    return p.colors[p.colorKey].images?.[0];
+  }
+  // Otherwise, show first available color or noColor image
   const colorEntries = p.colors ? Object.values(p.colors) : [];
   const firstColor = colorEntries[0];
   return firstColor?.images?.[0] ?? p.noColor?.images?.[0];
@@ -1612,7 +2283,16 @@ function ProductSectionCard({ product }: { product: ProductDoc }) {
         initialMode="login"
       />
       <div className="group relative">
-        <Link href={`/product/${product._id}`} className="block">
+        <Link
+          href={`/product/${product._id}${
+            product.colorKey && product.colorKey !== "Gold"
+              ? `?color=${encodeURIComponent(product.colorKey)}`
+              : product.colorKey === "Gold"
+              ? "?color=default"
+              : ""
+          }`}
+          className="block"
+        >
           <div className="relative aspect-[4/5] w-full overflow-hidden rounded-2xl bg-white">
             {img ? (
               <Image
@@ -1769,14 +2449,17 @@ function ProductSection({
       </div>
       <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
         {displayed.map((p) => (
-          <ProductSectionCard key={p._id} product={p} />
+          <ProductSectionCard
+            key={`${p._id}-${p.colorKey || "default"}`}
+            product={p}
+          />
         ))}
       </div>
     </section>
   );
 }
 
-function ProductSections() {
+function ProductSections({ productId }: { productId: string }) {
   const [data, setData] = useState<{
     tabs?: {
       combos?: ProductDoc[];
@@ -1786,8 +2469,12 @@ function ProductSections() {
     };
     sections?: { welcomeKits?: ProductDoc[] };
   } | null>(null);
+  const [similarProducts, setSimilarProducts] = useState<ProductDoc[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [similarLoading, setSimilarLoading] = useState(true);
 
   useEffect(() => {
+    setLoading(true);
     fetch("/api/catalogue/landing")
       .then((r) => r.json())
       .then((j) => {
@@ -1795,30 +2482,86 @@ function ProductSections() {
       })
       .catch(() => {
         setData(null);
+      })
+      .finally(() => {
+        setLoading(false);
       });
   }, []);
 
-  if (!data) return null;
+  useEffect(() => {
+    if (!productId) {
+      setSimilarLoading(false);
+      return;
+    }
+
+    setSimilarLoading(true);
+    fetch(`/api/products/${productId}/similar`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.products && Array.isArray(j.products)) {
+          setSimilarProducts(expandProductsByColor(j.products));
+        } else {
+          setSimilarProducts([]);
+        }
+      })
+      .catch(() => {
+        setSimilarProducts([]);
+      })
+      .finally(() => {
+        setSimilarLoading(false);
+      });
+  }, [productId]);
+
+  if (loading) {
+    return (
+      <>
+        <ProductSectionSkeleton />
+        <ProductSectionSkeleton />
+        <ProductSectionSkeleton />
+        <ProductSectionSkeleton />
+        <ProductSectionSkeleton />
+      </>
+    );
+  }
 
   return (
     <>
-      {data.sections?.welcomeKits && data.sections.welcomeKits.length > 0 && (
+      {similarLoading ? (
+        <ProductSectionSkeleton />
+      ) : (
+        similarProducts.length > 0 && (
+          <ProductSection title="Similar Products" products={similarProducts} />
+        )
+      )}
+      {data?.sections?.welcomeKits && data.sections.welcomeKits.length > 0 && (
         <ProductSection
           title="Welcome Kits"
-          products={data.sections.welcomeKits}
+          products={expandProductsByColor(data.sections.welcomeKits)}
         />
       )}
-      {data.tabs?.combos && data.tabs.combos.length > 0 && (
-        <ProductSection title="Combos" products={data.tabs.combos} />
+      {data?.tabs?.combos && data.tabs.combos.length > 0 && (
+        <ProductSection
+          title="Combos"
+          products={expandProductsByColor(data.tabs.combos)}
+        />
       )}
-      {data.tabs?.apparel && data.tabs.apparel.length > 0 && (
-        <ProductSection title="Apparel" products={data.tabs.apparel} />
+      {data?.tabs?.apparel && data.tabs.apparel.length > 0 && (
+        <ProductSection
+          title="Apparel"
+          products={expandProductsByColor(data.tabs.apparel)}
+        />
       )}
-      {data.tabs?.trending && data.tabs.trending.length > 0 && (
-        <ProductSection title="Trending" products={data.tabs.trending} />
+      {data?.tabs?.trending && data.tabs.trending.length > 0 && (
+        <ProductSection
+          title="Trending"
+          products={expandProductsByColor(data.tabs.trending)}
+        />
       )}
-      {data.tabs?.featured && data.tabs.featured.length > 0 && (
-        <ProductSection title="Featured" products={data.tabs.featured} />
+      {data?.tabs?.featured && data.tabs.featured.length > 0 && (
+        <ProductSection
+          title="Featured"
+          products={expandProductsByColor(data.tabs.featured)}
+        />
       )}
     </>
   );

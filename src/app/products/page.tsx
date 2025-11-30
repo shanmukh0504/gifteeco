@@ -14,6 +14,7 @@ type Product = {
   noColor?: { images?: string[] };
   colors?: Record<string, { images: string[] }>;
   deliveryTimeInDays?: number | null;
+  colorKey?: string; // Added to track which color variant this is
 };
 
 function ProductsPageContent() {
@@ -68,20 +69,67 @@ function ProductsPageContent() {
         const data = await response.json();
 
         // Handle response (always object format now)
+        let productsArray: Product[] = [];
         if (data.products && Array.isArray(data.products)) {
-          setProducts(data.products);
+          productsArray = data.products;
           setCorrectedQuery(data.correctedQuery || null);
           setOriginalQuery(data.originalQuery || null);
         } else if (Array.isArray(data)) {
           // Backward compatibility: if array is returned, treat as products
-          setProducts(data);
+          productsArray = data;
           setCorrectedQuery(null);
           setOriginalQuery(null);
         } else {
           setProducts([]);
           setCorrectedQuery(null);
           setOriginalQuery(null);
+          return;
         }
+
+        // Expand products with multiple colors into separate entries
+        // Only expand if product doesn't already have a colorKey (to avoid double expansion)
+        const expandedProducts: (Product & { colorKey?: string })[] = [];
+        const seenProducts = new Set<string>(); // Track seen product-color combinations
+
+        productsArray.forEach((product) => {
+          // If product already has a colorKey, it's already expanded, so add as is
+          if (product.colorKey) {
+            const uniqueKey = `${product._id}-${product.colorKey}`;
+            if (!seenProducts.has(uniqueKey)) {
+              seenProducts.add(uniqueKey);
+              expandedProducts.push(product);
+            }
+            return;
+          }
+
+          if (product.colors && Object.keys(product.colors).length > 0) {
+            // Create a product entry for each color
+            Object.entries(product.colors).forEach(([colorKey, colorData]) => {
+              const uniqueKey = `${product._id}-${colorKey}`;
+              if (!seenProducts.has(uniqueKey)) {
+                seenProducts.add(uniqueKey);
+                expandedProducts.push({
+                  ...product,
+                  colorKey, // Store the color key for the link
+                  // Override images to show this color's image
+                  noColor: undefined,
+                  colors: {
+                    [colorKey]: colorData,
+                  },
+                });
+              }
+            });
+          } else {
+            // Product with no colors or only noColor, add as is
+            const uniqueKey = `${product._id}-default`;
+            if (!seenProducts.has(uniqueKey)) {
+              seenProducts.add(uniqueKey);
+              expandedProducts.push(product);
+            }
+          }
+        });
+
+        setProducts(expandedProducts);
       }
     } catch (error) {
       console.error("Error fetching products:", error);

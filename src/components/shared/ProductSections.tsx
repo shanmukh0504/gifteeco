@@ -1,12 +1,13 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import useWishlistStore from "@/store/useWishlistStore";
 import useCartStore from "@/store/useCartStore";
 import useAuthStore from "@/store/useAuthStore";
+import useWishlistStore from "@/store/useWishlistStore";
 import AuthModal from "@/components/auth/AuthModal";
+import ProductSectionSkeleton from "./ProductSectionSkeleton";
 
 type ProductDoc = {
   _id: string;
@@ -74,28 +75,20 @@ function expandProductsByColor(products: ProductDoc[]): ProductDoc[] {
   return expandedProducts;
 }
 
-type LandingPayload = {
-  tabs: Record<string, ProductDoc[]>;
-  sections: Record<string, ProductDoc[]>;
-};
-
-const tabs = [
-  { key: "all", label: "All" },
-  { key: "trending", label: "TRENDING" },
-  { key: "apparel", label: "APPAREL" },
-  { key: "featured", label: "FEATURED" },
-  { key: "combos", label: "COMBOS" },
-] as const;
-
-function getPrimaryImage(p: ProductDoc): string | undefined {
+function getPrimaryImageForDoc(p: ProductDoc): string | undefined {
   // If product has a specific colorKey, show that color's image
   if (p.colorKey && p.colors && p.colors[p.colorKey]) {
     return p.colors[p.colorKey].images?.[0];
   }
   // Otherwise, show first available color or noColor image
-  const colorEntries = p.colors ? Object.values(p.colors) : [];
-  const firstColor = colorEntries[0];
-  return firstColor?.images?.[0] ?? p.noColor?.images?.[0];
+  if (p.colors && Object.keys(p.colors).length > 0) {
+    const colorEntries = Object.values(p.colors);
+    const firstColor = colorEntries[0];
+    if (firstColor?.images?.[0]) {
+      return firstColor.images[0];
+    }
+  }
+  return p.noColor?.images?.[0] ?? undefined;
 }
 
 function hasCustomizationOptions(product: ProductDoc): boolean {
@@ -123,8 +116,8 @@ function hasCustomizationOptions(product: ProductDoc): boolean {
   return false;
 }
 
-function ProductCard({ product }: { product: ProductDoc }) {
-  const img = getPrimaryImage(product);
+function ProductSectionCard({ product }: { product: ProductDoc }) {
+  const img = getPrimaryImageForDoc(product);
   const wishlistItems = useWishlistStore((state) => state.items);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const isWishlisted = isAuthenticated && wishlistItems.includes(product._id);
@@ -141,12 +134,10 @@ function ProductCard({ product }: { product: ProductDoc }) {
   const handleWishlistClick = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-
     if (!isAuthenticated || !token) {
       setShowAuthModal(true);
       return;
     }
-
     try {
       await toggleWishlist(product._id, token, () => setShowAuthModal(true));
     } catch (error) {
@@ -157,27 +148,20 @@ function ProductCard({ product }: { product: ProductDoc }) {
   const handleCartClick = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-
-    // If not authenticated, show auth modal
     if (!isAuthenticated || !token) {
       setShowAuthModal(true);
       return;
     }
-
-    // If product has customization options, redirect to product page
     if (hasCustomizationOptions(product)) {
       window.location.href = `/product/${product._id}`;
       return;
     }
-
     try {
       if (cartQuantity > 0) {
-        // Remove from cart
         await removeItem(product._id, undefined, undefined, token, () =>
           setShowAuthModal(true)
         );
       } else {
-        // Add to cart with minimum quantity
         await addItem(
           { productId: product._id, quantity: minQuantity },
           token,
@@ -223,9 +207,7 @@ function ProductCard({ product }: { product: ProductDoc }) {
             <button
               onClick={handleWishlistClick}
               className={`absolute right-2 top-2 z-10 rounded-lg bg-white/95 p-2 shadow-lg backdrop-blur-sm transition hover:bg-white ${
-                isWishlisted
-                  ? "opacity-100 shadow-pink-200"
-                  : "opacity-0 group-hover:opacity-100"
+                isWishlisted ? "shadow-pink-200" : ""
               }`}
               aria-label={
                 isWishlisted ? "Remove from wishlist" : "Add to wishlist"
@@ -255,7 +237,7 @@ function ProductCard({ product }: { product: ProductDoc }) {
               {product.name}
             </div>
             <div className="flex items-center justify-between">
-              <div className="text-sm text-neutral-900">
+              <div className="text-sm font-semibold text-neutral-900">
                 ₹{Math.round(product.price)}
               </div>
               <button
@@ -290,16 +272,24 @@ function ProductCard({ product }: { product: ProductDoc }) {
   );
 }
 
-function Row({ title, products }: { title: string; products: ProductDoc[] }) {
+export function ProductSection({
+  title,
+  products,
+}: {
+  title: string;
+  products: ProductDoc[];
+}) {
   const [index, setIndex] = useState(0);
   const visible = 4;
   const maxIndex = Math.max(0, products.length - visible);
   const displayed = products.slice(index, index + visible);
 
+  if (products.length === 0) return null;
+
   return (
     <section className="mx-auto w-full max-w-6xl px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
-        <h2 className="text-2xl font-semibold text-[#4a154b]">{title}</h2>
+        <h3 className="text-xl font-semibold text-[#4a154b]">{title}</h3>
         <div className="flex gap-2">
           <button
             aria-label="previous"
@@ -357,7 +347,7 @@ function Row({ title, products }: { title: string; products: ProductDoc[] }) {
       </div>
       <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
         {displayed.map((p) => (
-          <ProductCard
+          <ProductSectionCard
             key={`${p._id}-${p.colorKey || "default"}`}
             product={p}
           />
@@ -367,178 +357,195 @@ function Row({ title, products }: { title: string; products: ProductDoc[] }) {
   );
 }
 
-export default function ProductShowcase() {
-  const [data, setData] = useState<LandingPayload | null>(null);
+export default function ProductSections() {
+  const [data, setData] = useState<{
+    tabs?: {
+      combos?: ProductDoc[];
+      trending?: ProductDoc[];
+      featured?: ProductDoc[];
+    };
+    sections?: {
+      welcomeKits?: ProductDoc[];
+    };
+  } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] =
-    useState<(typeof tabs)[number]["key"]>("all");
 
   useEffect(() => {
     setLoading(true);
     fetch("/api/catalogue/landing")
       .then((r) => r.json())
       .then((j) => {
-        // Ensure the response has the expected structure
-        if (j && j.tabs && j.sections) {
-          setData(j);
-        } else {
-          // If error response, set empty structure
-          setData({
-            tabs: {
-              all: [],
-              trending: [],
-              apparel: [],
-              featured: [],
-              combos: [],
-            },
-            sections: {
-              bestSellers: [],
-              welcomeKits: [],
-            },
-          });
-        }
+        setData(j);
       })
       .catch(() => {
-        // On fetch error, set empty structure
-        setData({
-          tabs: {
-            all: [],
-            trending: [],
-            apparel: [],
-            featured: [],
-            combos: [],
-          },
-          sections: {
-            bestSellers: [],
-            welcomeKits: [],
-          },
-        });
+        setData(null);
       })
       .finally(() => {
         setLoading(false);
       });
   }, []);
 
-  const tabProducts = useMemo(() => {
-    if (!data || !data.tabs) return [];
-    const products = data.tabs[activeTab] ?? [];
-    return expandProductsByColor(products);
-  }, [data, activeTab]);
-
   if (loading) {
     return (
-      <div>
-        <section className="mx-auto w-full max-w-6xl px-4 py-12">
-          <div className="mb-6 h-8 w-32 bg-neutral-200 rounded mx-auto animate-pulse" />
-          <div className="mb-8 flex justify-center gap-6">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div
-                key={i}
-                className="h-5 w-20 bg-neutral-200 rounded animate-pulse"
-              />
-            ))}
-          </div>
-          <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="group relative animate-pulse">
-                <div className="relative aspect-[4/5] w-full overflow-hidden rounded-2xl bg-neutral-200" />
-                <div className="mt-3 space-y-2">
-                  <div className="h-4 w-3/4 rounded bg-neutral-200" />
-                  <div className="flex items-center justify-between">
-                    <div className="h-4 w-16 rounded bg-neutral-200" />
-                    <div className="h-10 w-10 rounded-lg bg-neutral-200" />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-        {[1, 2].map((row) => (
-          <section key={row} className="mx-auto w-full max-w-6xl px-4 py-8">
-            <div className="mb-6 flex items-center justify-between">
-              <div className="h-6 w-32 bg-neutral-200 rounded animate-pulse" />
-              <div className="flex gap-2">
-                <div className="h-10 w-10 rounded-full bg-neutral-200 animate-pulse" />
-                <div className="h-10 w-10 rounded-full bg-neutral-200 animate-pulse" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="group relative animate-pulse">
-                  <div className="relative aspect-[4/5] w-full overflow-hidden rounded-2xl bg-neutral-200" />
-                  <div className="mt-3 space-y-2">
-                    <div className="h-4 w-3/4 rounded bg-neutral-200" />
-                    <div className="flex items-center justify-between">
-                      <div className="h-4 w-16 rounded bg-neutral-200" />
-                      <div className="h-10 w-10 rounded-lg bg-neutral-200" />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        ))}
-      </div>
+      <>
+        <ProductSectionSkeleton />
+        <ProductSectionSkeleton />
+        <ProductSectionSkeleton />
+      </>
     );
   }
 
-  if (!data || !data.tabs || !data.sections) return null;
+  if (!data) return null;
 
   return (
-    <div>
-      <section className="mx-auto w-full max-w-6xl px-4 py-12">
-        <h2 className="mb-6 text-center text-2xl font-semibold text-[#4a154b] underline decoration-2 underline-offset-4">
-          Our Products
-        </h2>
-        <div className="mb-8 flex items-center justify-between">
-          <div className="flex gap-6 text-sm">
-          {tabs.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setActiveTab(t.key)}
-              className={`font-medium transition ${
-                activeTab === t.key
-                  ? "text-neutral-900 underline decoration-2 underline-offset-4"
-                  : "text-neutral-600 hover:text-neutral-900"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-          </div>
-          <Link
-            href="/products"
-            className="text-sm font-medium text-neutral-900 hover:text-neutral-600 transition"
-          >
-            <div className="flex items-center gap-2 underline decoration-2 underline-offset-4">
-            EXPLORE ALL
-            <Image
-              src="/right.svg"
-              alt="arrow right"
-              width={16}
-              height={16}
-            />
-            </div>
-          </Link>
-        </div>
-        <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
-          {tabProducts.slice(0, 4).map((p) => (
-            <ProductCard
-              key={`${p._id}-${p.colorKey || "default"}`}
-              product={p}
-            />
-          ))}
-        </div>
-      </section>
-
-      <Row
-        title="BestSellers"
-        products={expandProductsByColor(data.sections.bestSellers || [])}
-      />
-      <Row
-        title="Welcome Kits"
-        products={expandProductsByColor(data.sections.welcomeKits || [])}
-      />
-    </div>
+    <>
+      {data.tabs?.combos && data.tabs.combos.length > 0 && (
+        <ProductSection
+          title="Corporate Gifts"
+          products={expandProductsByColor(data.tabs.combos)}
+        />
+      )}
+      {data.tabs?.trending && data.tabs.trending.length > 0 && (
+        <ProductSection
+          title="Similar Products"
+          products={expandProductsByColor(data.tabs.trending)}
+        />
+      )}
+      {data.sections?.welcomeKits && data.sections.welcomeKits.length > 0 && (
+        <ProductSection
+          title="Welcome Kits"
+          products={expandProductsByColor(data.sections.welcomeKits)}
+        />
+      )}
+    </>
   );
+}
+
+// Export for use in other pages
+export function CorporateGiftsSection() {
+  const [products, setProducts] = useState<ProductDoc[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch("/api/catalogue/landing")
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.tabs?.combos) {
+          setProducts(expandProductsByColor(j.tabs.combos));
+        }
+      })
+      .catch(() => {
+        setProducts([]);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, []);
+
+  if (loading) {
+    return <ProductSectionSkeleton />;
+  }
+
+  if (products.length === 0) return null;
+
+  return <ProductSection title="Corporate Gifts" products={products} />;
+}
+
+export function SimilarProductsSection({ productId }: { productId?: string }) {
+  const [products, setProducts] = useState<ProductDoc[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!productId) {
+      setProducts([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    fetch(`/api/products/${productId}/similar`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.products && Array.isArray(j.products)) {
+          setProducts(expandProductsByColor(j.products));
+        } else {
+          setProducts([]);
+        }
+      })
+      .catch(() => {
+        setProducts([]);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [productId]);
+
+  if (loading) {
+    return <ProductSectionSkeleton />;
+  }
+
+  if (products.length === 0) return null;
+
+  return <ProductSection title="Similar Products" products={products} />;
+}
+
+export function WelcomeKitsSection() {
+  const [products, setProducts] = useState<ProductDoc[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch("/api/catalogue/landing")
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.sections?.welcomeKits) {
+          setProducts(expandProductsByColor(j.sections.welcomeKits));
+        }
+      })
+      .catch(() => {
+        setProducts([]);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, []);
+
+  if (loading) {
+    return <ProductSectionSkeleton />;
+  }
+
+  if (products.length === 0) return null;
+
+  return <ProductSection title="Welcome Kits" products={products} />;
+}
+
+export function TrendingSection() {
+  const [products, setProducts] = useState<ProductDoc[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch("/api/catalogue/landing")
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.tabs?.trending) {
+          setProducts(expandProductsByColor(j.tabs.trending));
+        }
+      })
+      .catch(() => {
+        setProducts([]);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, []);
+
+  if (loading) {
+    return <ProductSectionSkeleton />;
+  }
+
+  if (products.length === 0) return null;
+
+  return <ProductSection title="Trending" products={products} />;
 }
