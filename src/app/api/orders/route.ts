@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import connectDB from '@/lib/db';
 import Order from '@/models/Order';
 import Product from '@/models/Product';
+import jwt from 'jsonwebtoken';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
 export async function GET() {
   try {
@@ -24,14 +27,28 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     await connectDB();
-    const orderData = await req.json();
 
-    if (!orderData.user) {
+    // Get user from token
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json(
-        { error: 'User ID is required' },
-        { status: 400 }
+        { error: 'No token provided' },
+        { status: 401 }
       );
     }
+
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
+
+    if (!decoded.userId) {
+      return NextResponse.json(
+        { error: 'Invalid token' },
+        { status: 401 }
+      );
+    }
+
+    const orderData = await req.json();
+    const userId = decoded.userId;
 
     if (!orderData.items || orderData.items.length === 0) {
       return NextResponse.json(
@@ -46,6 +63,9 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    // Check if this is a sample purchase (single item with quantity 1)
+    const isSamplePurchase = orderData.items.length === 1 && orderData.items[0].quantity === 1;
 
     // Process each item and handle combo products
     const processedItems = [];
@@ -62,11 +82,46 @@ export async function POST(req: Request) {
 
       // Validate minimum quantity
       const minQuantity = product.minQuantity || 1;
-      if (item.quantity < minQuantity) {
-        return NextResponse.json(
-          { error: `Product "${product.name}" requires minimum ${minQuantity} units. You ordered ${item.quantity} units.` },
-          { status: 400 }
-        );
+
+      // Special handling for sample purchases
+      if (isSamplePurchase) {
+        // For sample purchases, allow quantity 1 even if minQuantity is higher
+        if (item.quantity !== 1) {
+          return NextResponse.json(
+            { error: 'Sample purchase must be exactly 1 unit' },
+            { status: 400 }
+          );
+        }
+
+        // Check if user has already bought a sample of this product
+        const existingSampleOrder = await Order.findOne({
+          user: userId,
+          'items.product': item.product,
+          'items.quantity': 1,
+        });
+
+        if (existingSampleOrder) {
+          return NextResponse.json(
+            { error: 'You have already purchased a sample of this product' },
+            { status: 400 }
+          );
+        }
+
+        // Don't allow sample purchase if minQuantity is 1
+        if (minQuantity === 1) {
+          return NextResponse.json(
+            { error: 'Sample purchase is not available for this product' },
+            { status: 400 }
+          );
+        }
+      } else {
+        // Regular purchase - enforce minimum quantity
+        if (item.quantity < minQuantity) {
+          return NextResponse.json(
+            { error: `Product "${product.name}" requires minimum ${minQuantity} units. You ordered ${item.quantity} units.` },
+            { status: 400 }
+          );
+        }
       }
 
       // Track salesCount for this product
@@ -78,7 +133,7 @@ export async function POST(req: Request) {
         for (const comboItem of product.comboItems) {
           const comboProductId = comboItem.productId.toString();
           const totalQuantity = item.quantity * comboItem.quantity;
-          
+
           // Deduct stock from combo item
           const comboProduct = await Product.findById(comboProductId);
           if (comboProduct) {
@@ -128,8 +183,11 @@ export async function POST(req: Request) {
     }
 
     const order = await Order.create({
-      ...orderData,
+      user: userId,
       items: processedItems,
+      totalAmount: orderData.totalAmount,
+      shippingInfo: orderData.shippingInfo,
+      payment: orderData.payment,
     });
 
     return NextResponse.json(order, { status: 201 });

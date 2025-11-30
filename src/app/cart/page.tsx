@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -10,6 +10,11 @@ import AuthModal from "@/components/auth/AuthModal";
 import { toast } from "sonner";
 import Button from "@/components/ui/Button";
 import useWishlistStore from "@/store/useWishlistStore";
+import {
+  SimilarProductsSection,
+  WelcomeKitsSection,
+} from "@/components/shared/ProductSections";
+import CustomizedDetailsModal from "@/components/cart/CustomizedDetailsModal";
 
 type Address = {
   name: string;
@@ -40,6 +45,22 @@ type ProductDoc = {
   minQuantity?: number;
 };
 
+type PrintLocation = {
+  slot?: string;
+  uploadedImage?: string;
+  elements?: Array<{
+    type?: string;
+    textValue?: string;
+    imageData?: string;
+    qrValue?: string;
+    shapeType?: string;
+    fillColor?: string;
+    id?: string;
+  }>;
+};
+
+type CustomizationElements = Record<string, Record<string, unknown[]>>;
+
 function getPrimaryImage(item: {
   product?: {
     colors?: Record<string, { images?: string[] }>;
@@ -68,6 +89,130 @@ function getPrimaryImage(item: {
   return product?.noColor?.images?.[0] || product?.images?.[0];
 }
 
+// Helper function to check if customization has actual content (not just empty/null)
+function hasActualCustomization(
+  customization?: Record<string, unknown> | null
+): boolean {
+  // Return false if customization is null, undefined, or not an object
+  if (
+    !customization ||
+    typeof customization !== "object" ||
+    Array.isArray(customization)
+  ) {
+    return false;
+  }
+
+  // Check if it's an empty object
+  const keys = Object.keys(customization);
+  if (keys.length === 0) return false;
+
+  // Check for printLocations with actual content
+  if (customization.printLocations) {
+    if (Array.isArray(customization.printLocations)) {
+      const printLocations = customization.printLocations;
+
+      // If printLocations is empty array, check if there are other meaningful keys
+      if (printLocations.length === 0) {
+        // Check if there are other non-empty keys besides printLocations
+        const otherKeys = keys.filter(
+          (k) => k !== "printLocations" && k !== "printSize"
+        );
+        // If only printLocations exists (and maybe printSize), it's empty
+        if (otherKeys.length === 0) return false;
+      } else {
+        // Check if any printLocation has actual content
+        const hasContent = printLocations.some((loc: PrintLocation) => {
+          if (!loc || typeof loc !== "object") return false;
+
+          // Check for uploaded image
+          if (
+            loc.uploadedImage &&
+            typeof loc.uploadedImage === "string" &&
+            loc.uploadedImage.trim() !== ""
+          ) {
+            return true;
+          }
+
+          // Check for elements with actual content
+          if (
+            loc.elements &&
+            Array.isArray(loc.elements) &&
+            loc.elements.length > 0
+          ) {
+            return loc.elements.some((el) => {
+              if (!el || typeof el !== "object") return false;
+
+              // Text with value
+              if (
+                el.type === "text" &&
+                el.textValue &&
+                typeof el.textValue === "string" &&
+                el.textValue.trim() !== ""
+              )
+                return true;
+              // Logo with image
+              if (
+                el.type === "logo" &&
+                el.imageData &&
+                typeof el.imageData === "string" &&
+                el.imageData.trim() !== ""
+              )
+                return true;
+              // QR code with value
+              if (
+                el.type === "qrcode" &&
+                el.qrValue &&
+                typeof el.qrValue === "string" &&
+                el.qrValue.trim() !== ""
+              )
+                return true;
+              // Shape
+              if (el.type === "shape" && el.shapeType) return true;
+              // Fill
+              if (
+                el.type === "fill" &&
+                el.fillColor &&
+                typeof el.fillColor === "string" &&
+                el.fillColor.trim() !== ""
+              )
+                return true;
+              return false;
+            });
+          }
+          return false;
+        });
+        if (hasContent) return true;
+      }
+    }
+  }
+
+  // Check for elements in old format
+  if (
+    customization.elements &&
+    typeof customization.elements === "object" &&
+    !Array.isArray(customization.elements)
+  ) {
+    const elements = customization.elements as CustomizationElements;
+    const hasElements = Object.values(elements).some((colorElements) =>
+      colorElements && typeof colorElements === "object"
+        ? Object.values(colorElements).some(
+            (slotElements) =>
+              Array.isArray(slotElements) && slotElements.length > 0
+          )
+        : false
+    );
+    if (hasElements) return true;
+  }
+
+  // Check for sketched image (must be explicitly true)
+  if (customization.sketchedImage === true) {
+    return true;
+  }
+
+  // No actual customization content found
+  return false;
+}
+
 function getPrimaryImageForDoc(p: ProductDoc): string | undefined {
   if (p.colors && Object.keys(p.colors).length > 0) {
     const colorEntries = Object.values(p.colors);
@@ -77,6 +222,100 @@ function getPrimaryImageForDoc(p: ProductDoc): string | undefined {
     }
   }
   return p.noColor?.images?.[0] ?? undefined;
+}
+
+function SizeDropdown({
+  sizes,
+  selectedSize,
+  onSizeChange,
+  disabled,
+}: {
+  sizes: string[];
+  selectedSize: string;
+  onSizeChange: (size: string) => void;
+  disabled?: boolean;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsOpen(false);
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isOpen]);
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        disabled={disabled}
+        className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-neutral-200 bg-white hover:border-[var(--color-button)] hover:shadow-sm transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed group"
+      >
+        <span className="text-sm text-neutral-600">Size:</span>
+        <span className="text-sm font-semibold text-[var(--color-button)] min-w-[20px]">
+          {selectedSize || "Select"}
+        </span>
+        <svg
+          className={`w-4 h-4 text-neutral-400 transition-transform duration-200 ${
+            isOpen ? "rotate-180" : ""
+          }`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M19 9l-7 7-7-7"
+          />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div
+          className="absolute top-full left-0 mt-1 bg-white border border-neutral-200 rounded-lg shadow-lg z-50 min-w-[120px] overflow-hidden"
+          style={{
+            animation: "fadeInSlideDown 0.2s ease-out",
+          }}
+        >
+          <div className="py-1">
+            {sizes.map((size) => (
+              <button
+                key={size}
+                type="button"
+                onClick={() => {
+                  onSizeChange(size);
+                  setIsOpen(false);
+                }}
+                className={`w-full px-4 py-2 text-left text-sm transition-colors duration-150 ${
+                  selectedSize === size
+                    ? "bg-[var(--color-primary-soft)] text-[var(--color-button)] font-semibold"
+                    : "text-neutral-700 hover:bg-neutral-50"
+                }`}
+              >
+                {size}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function hasCustomizationOptions(product: ProductDoc): boolean {
@@ -385,8 +624,14 @@ function ProductSections() {
 export default function CartPage() {
   const router = useRouter();
   const { isAuthenticated, token, _hasHydrated } = useAuthStore();
-  const { itemsWithDetails, isLoading, updateQuantity, removeItem, fetchCart } =
-    useCartStore();
+  const {
+    itemsWithDetails,
+    isLoading,
+    updateQuantity,
+    removeItem,
+    fetchCart,
+    updateSize,
+  } = useCartStore();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [selectedAddress, setSelectedAddress] = useState<Address | null>(null);
@@ -400,6 +645,10 @@ export default function CartPage() {
     pincode: "",
   });
   const [updatingItem, setUpdatingItem] = useState<string | null>(null);
+  const [customizedDetailsModal, setCustomizedDetailsModal] = useState<{
+    isOpen: boolean;
+    item: (typeof itemsWithDetails)[0] | null;
+  }>({ isOpen: false, item: null });
 
   const fetchAddresses = useCallback(async () => {
     if (!token) return;
@@ -433,7 +682,9 @@ export default function CartPage() {
     productId: string,
     newQuantity: number,
     size?: string,
-    color?: string
+    color?: string,
+    cartItemId?: string,
+    customization?: Record<string, unknown>
   ) => {
     if (!isAuthenticated || !token) {
       setShowAuthModal(true);
@@ -456,12 +707,23 @@ export default function CartPage() {
     }
 
     // Create unique key for this item
-    const itemKey = `${productId}-${size || ""}-${color || ""}`;
+    const itemKey =
+      cartItemId ||
+      `${productId}-${size || ""}-${color || ""}-${JSON.stringify(
+        customization || {}
+      )}`;
     setUpdatingItem(itemKey);
 
     try {
-      await updateQuantity(productId, newQuantity, size, color, token, () =>
-        setShowAuthModal(true)
+      await updateQuantity(
+        productId,
+        newQuantity,
+        size,
+        color,
+        token,
+        () => setShowAuthModal(true),
+        cartItemId,
+        customization
       );
     } catch (error) {
       console.error("Error updating quantity:", error);
@@ -476,7 +738,9 @@ export default function CartPage() {
   const handleRemove = async (
     productId: string,
     size?: string,
-    color?: string
+    color?: string,
+    cartItemId?: string,
+    customization?: Record<string, unknown>
   ) => {
     if (!isAuthenticated || !token) {
       setShowAuthModal(true);
@@ -484,8 +748,14 @@ export default function CartPage() {
     }
 
     try {
-      await removeItem(productId, size, color, token, () =>
-        setShowAuthModal(true)
+      await removeItem(
+        productId,
+        size,
+        color,
+        token,
+        () => setShowAuthModal(true),
+        cartItemId,
+        customization
       );
       toast.success("Item removed from cart");
     } catch (error) {
@@ -561,16 +831,14 @@ export default function CartPage() {
         />
         <div className="min-h-screen bg-neutral-50 py-12">
           <div className="mx-auto max-w-7xl px-4">
-            <div className="mb-6 flex items-center gap-4">
-              <button
-                onClick={() => router.back()}
-                className="p-2 rounded-lg hover:bg-neutral-200 transition"
+            <div className="mb-6">
+              <Link
+                href={`/products`}
+                className="flex items-center gap-2 text-sm text-neutral-600 hover:text-neutral-900"
               >
                 <Image src="/left.svg" alt="Back" width={20} height={20} />
-              </button>
-              <h1 className="text-2xl font-semibold text-neutral-900">
-                Add to Cart
-              </h1>
+                Back to product
+              </Link>
             </div>
             <div className="bg-white rounded-2xl p-12 text-center border border-neutral-200">
               <div className="mx-auto w-24 h-24 bg-neutral-100 rounded-full flex items-center justify-center mb-6">
@@ -617,24 +885,18 @@ export default function CartPage() {
       />
       <div className="min-h-screen bg-neutral-50 py-8">
         <div className="mx-auto max-w-7xl px-4">
-          <div className="mb-6 flex items-center gap-4">
-            <button
-              onClick={() => router.back()}
-              className="p-2 rounded-lg hover:bg-neutral-200 transition"
+          <div className="mb-6">
+            <Link
+              href={`/products`}
+              className="flex items-center gap-2 text-sm text-neutral-600 hover:text-neutral-900"
             >
               <Image src="/left.svg" alt="Back" width={20} height={20} />
-            </button>
-            <h1 className="text-2xl font-semibold text-neutral-900">
-              Add to Cart
-            </h1>
+              Back to products
+            </Link>
           </div>
-
           {itemsWithDetails.length === 0 ? (
             <>
               <div className="w-full space-y-0">
-                <h2 className="text-lg font-semibold text-neutral-900 mb-4">
-                  Items in cart
-                </h2>
                 <div className="bg-white rounded-2xl p-12 text-center border border-neutral-200">
                   <div className="mx-auto w-24 h-24 bg-neutral-100 rounded-full flex items-center justify-center mb-6">
                     <svg
@@ -681,41 +943,17 @@ export default function CartPage() {
                     const product = item.product;
                     const img = getPrimaryImage({ product, color: item.color });
                     const customization = item.customization;
-                    let hasCustomization = false;
-                    if (customization) {
-                      // Check for printLocations with uploaded images (not just empty arrays)
-                      if (customization.printLocations) {
-                        const printLocations =
-                          customization.printLocations as Array<{
-                            slot?: string;
-                            uploadedImage?: string;
-                            elements?: unknown[];
-                          }>;
-                        if (
-                          Array.isArray(printLocations) &&
-                          printLocations.length > 0
-                        ) {
-                          // Check if any printLocation has an uploaded image
-                          hasCustomization = printLocations.some(
-                            (loc) =>
-                              loc &&
-                              loc.uploadedImage &&
-                              loc.uploadedImage.trim() !== ""
-                          );
-                        }
-                      }
-                      // Check for sketched image (this indicates user did a sketch)
-                      if (
-                        !hasCustomization &&
-                        customization.sketchedImage === true
-                      ) {
-                        hasCustomization = true;
-                      }
-                    }
+                    // Explicitly handle null, undefined, or empty customization
+                    const hasCustomization =
+                      customization !== null && customization !== undefined
+                        ? hasActualCustomization(customization)
+                        : false;
                     const price = product?.price || 0;
-                    const itemKey = `${item.productId}-${item.size || ""}-${
-                      item.color || ""
-                    }`;
+                    const itemKey =
+                      item.cartItemId ||
+                      `${item.productId}-${item.size || ""}-${
+                        item.color || ""
+                      }-${JSON.stringify(item.customization || {})}`;
                     const isUpdating = updatingItem === itemKey;
 
                     return (
@@ -725,7 +963,14 @@ export default function CartPage() {
                           isUpdating ? "opacity-50 pointer-events-none" : ""
                         }`}
                       >
-                        <div className="w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden bg-[#FFE5E7]">
+                        <Link
+                          href={`/product/${item.productId}${
+                            item.color
+                              ? `?color=${encodeURIComponent(item.color)}`
+                              : ""
+                          }`}
+                          className="w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden bg-[#FFE5E7] cursor-pointer"
+                        >
                           {img ? (
                             <Image
                               src={img}
@@ -739,31 +984,66 @@ export default function CartPage() {
                               No image
                             </div>
                           )}
-                        </div>
+                        </Link>
 
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-4 mb-2">
-                            <h3 className="font-semibold text-neutral-900 line-clamp-2 flex-1">
-                              {product?.name || "Product"}
-                            </h3>
-                          </div>
-                          {(item.size || item.color) && (
-                            <div className="flex items-center gap-2 mb-2 text-sm text-neutral-600">
-                              {item.size && (
-                                <span className="px-2 py-1 rounded-md bg-neutral-100">
-                                  Size: {item.size}
-                                </span>
-                              )}
-                              {item.color && (
-                                <span className="px-2 py-1 rounded-md bg-neutral-100">
-                                  Color: {item.color}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                          {hasCustomization && (
                             <Link
-                              href={`/product/${item.productId}`}
+                              href={`/product/${item.productId}${
+                                item.color
+                                  ? `?color=${encodeURIComponent(item.color)}`
+                                  : ""
+                              }`}
+                            >
+                              <h3 className="font-semibold text-neutral-900 line-clamp-2 flex-1 hover:text-[var(--color-button)] transition cursor-pointer">
+                                {product?.name || "Product"}
+                              </h3>
+                            </Link>
+                          </div>
+                          <div className="flex items-center gap-2 mb-2">
+                            {product?.sizes && product.sizes.length > 0 && (
+                              <SizeDropdown
+                                sizes={product.sizes}
+                                selectedSize={item.size || ""}
+                                onSizeChange={async (newSize) => {
+                                  if (newSize !== item.size) {
+                                    setUpdatingItem(itemKey);
+                                    try {
+                                      await updateSize(
+                                        item.productId,
+                                        item.size || undefined,
+                                        newSize,
+                                        item.color,
+                                        token || undefined,
+                                        () => setShowAuthModal(true),
+                                        item.cartItemId,
+                                        item.customization
+                                      );
+                                      toast.success("Size updated");
+                                    } catch {
+                                      toast.error("Failed to update size");
+                                    } finally {
+                                      setUpdatingItem(null);
+                                    }
+                                  }
+                                }}
+                                disabled={isUpdating}
+                              />
+                            )}
+                            {item.color && (
+                              <span className="px-2 py-1 rounded-md bg-neutral-100 text-sm text-neutral-600">
+                                Color: {item.color}
+                              </span>
+                            )}
+                          </div>
+                          {hasCustomization && (
+                            <button
+                              onClick={() =>
+                                setCustomizedDetailsModal({
+                                  isOpen: true,
+                                  item,
+                                })
+                              }
                               className="inline-flex items-center gap-1 mb-2 px-3 py-1 rounded-full bg-[#EDF5FF] text-[#0258D9] text-sm hover:bg-[#D6E9FF] transition"
                             >
                               Customized details
@@ -782,7 +1062,7 @@ export default function CartPage() {
                                   strokeLinejoin="round"
                                 />
                               </svg>
-                            </Link>
+                            </button>
                           )}
                         </div>
 
@@ -798,7 +1078,9 @@ export default function CartPage() {
                                     item.productId,
                                     item.quantity - 1,
                                     item.size,
-                                    item.color
+                                    item.color,
+                                    item.cartItemId,
+                                    item.customization
                                   )
                                 }
                                 disabled={isUpdating}
@@ -828,7 +1110,9 @@ export default function CartPage() {
                                     item.productId,
                                     item.quantity + 1,
                                     item.size,
-                                    item.color
+                                    item.color,
+                                    item.cartItemId,
+                                    item.customization
                                   )
                                 }
                                 className="w-7 h-7 flex items-center justify-center rounded-full bg-[var(--color-button)] hover:bg-[var(--color-button-hover)] transition text-white cursor-pointer"
@@ -854,7 +1138,9 @@ export default function CartPage() {
                                 handleRemove(
                                   item.productId,
                                   item.size,
-                                  item.color
+                                  item.color,
+                                  item.cartItemId,
+                                  item.customization
                                 )
                               }
                               className="text-[var(--color-button)] hover:text-[var(--color-button-hover)] transition text-sm cursor-pointer"
@@ -1109,7 +1395,29 @@ export default function CartPage() {
             </div>
           )}
         </div>
+        <div className="mt-12">
+          <SimilarProductsSection />
+          <WelcomeKitsSection />
+        </div>
       </div>
+      {customizedDetailsModal.item && (
+        <CustomizedDetailsModal
+          isOpen={customizedDetailsModal.isOpen}
+          onClose={() =>
+            setCustomizedDetailsModal({ isOpen: false, item: null })
+          }
+          productName={customizedDetailsModal.item.product?.name || "Product"}
+          productId={customizedDetailsModal.item.productId}
+          productColor={customizedDetailsModal.item.color}
+          cartItemId={customizedDetailsModal.item.cartItemId}
+          customization={
+            customizedDetailsModal.item.customization as
+              | Record<string, unknown>
+              | undefined
+          }
+          product={customizedDetailsModal.item.product}
+        />
+      )}
     </>
   );
 }

@@ -3,13 +3,21 @@
 import { useMemo, useState, useRef, useCallback, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { QRCodeSVG } from "qrcode.react";
 import {
   BoundingBox,
   DEFAULT_BOUNDING_BOXES,
   SlotKey,
 } from "@/constants/customization";
 import { toast } from "sonner";
+import {
+  saveDesign,
+  loadDesign,
+  type SavedDesign,
+  type DesignElement as SharedDesignElement,
+  type PrintLocation,
+} from "@/lib/designStorage";
 
 type SlotCustomization = {
   enabled?: boolean;
@@ -38,30 +46,10 @@ type ProductData = {
   customDefaults?: Record<SlotKey, BoundingBox>;
 };
 
-type ElementType = "text" | "logo" | "qrcode" | "shape";
+type ElementType = "text" | "logo" | "qrcode" | "shape" | "fill";
 
-type DesignElement = {
-  id: string;
-  type: ElementType;
-  x: number; // percentage within bounding box
-  y: number; // percentage within bounding box
-  width: number; // percentage
-  height: number; // percentage
-  rotation: number;
-  zIndex: number;
-  // Text specific
-  textValue?: string;
-  fontFamily?: string;
-  fontSize?: number;
-  textColor?: string;
-  // Image/Logo specific
-  imageData?: string;
-  // QR Code specific
-  qrValue?: string;
-  // Shape specific
-  shapeType?: "circle" | "square" | "triangle";
-  shapeColor?: string;
-};
+// Use shared DesignElement type
+type DesignElement = SharedDesignElement;
 
 const SLOT_KEYS: SlotKey[] = ["front", "back", "chest"];
 
@@ -78,6 +66,7 @@ interface ProductCustomizerProps {
 
 export default function ProductCustomizer({ product }: ProductCustomizerProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const colorEntries = useMemo(() => {
     if (product.hasColorOptions && product.colors) {
       return Object.entries(product.colors);
@@ -85,10 +74,47 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
     return [["default", product.noColor || {}]];
   }, [product]);
 
-  const [selectedColor, setSelectedColor] = useState<string>(
-    (colorEntries[0]?.[0] as string) ?? "default"
+  // Get color from URL params, default to first color
+  const colorFromUrl = searchParams.get("color");
+  const [selectedColor, setSelectedColor] = useState<string>(() => {
+    if (colorFromUrl) {
+      // If URL has "default", map it to the first color entry
+      if (colorFromUrl === "default") {
+        return (colorEntries[0]?.[0] as string) ?? "default";
+      }
+      // Check if the color from URL exists in colorEntries
+      const colorExists = colorEntries.find(([key]) => key === colorFromUrl);
+      if (colorExists) {
+        return colorFromUrl;
+      }
+      // If color doesn't exist, fall back to first color
+    }
+    return (colorEntries[0]?.[0] as string) ?? "default";
+  });
+
+  // Update selectedColor when colorFromUrl changes (e.g., when navigating with different color)
+  useEffect(() => {
+    if (colorFromUrl) {
+      if (colorFromUrl === "default") {
+        const firstColor = (colorEntries[0]?.[0] as string) ?? "default";
+        if (firstColor !== selectedColor) {
+          setSelectedColor(firstColor);
+        }
+      } else {
+        const colorExists = colorEntries.find(([key]) => key === colorFromUrl);
+        if (colorExists && colorFromUrl !== selectedColor) {
+          setSelectedColor(colorFromUrl);
+        }
+      }
+    }
+  }, [colorFromUrl, colorEntries, selectedColor]);
+  // Get slot from URL params, default to "front"
+  const slotFromUrl = searchParams.get("slot") as SlotKey | null;
+  const [selectedSlot] = useState<SlotKey>(
+    slotFromUrl && ["front", "back", "chest"].includes(slotFromUrl)
+      ? slotFromUrl
+      : "front"
   );
-  const [selectedSlot] = useState<SlotKey>("front");
   const [elements, setElements] = useState<
     Record<string, Record<SlotKey, DesignElement[]>>
   >(() =>
@@ -105,6 +131,113 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
       ])
     )
   );
+
+  // Load existing design on mount
+  useEffect(() => {
+    const savedDesign = loadDesign(product._id);
+    if (savedDesign) {
+      // Merge saved elements with current color structure
+      const mergedElements: Record<
+        string,
+        Record<SlotKey, DesignElement[]>
+      > = {};
+
+      // Initialize with current color structure
+      colorEntries.forEach((entry) => {
+        const key = entry[0] as string;
+        mergedElements[key] = SLOT_KEYS.reduce(
+          (slotAcc, slot) => ({
+            ...slotAcc,
+            [slot]: [],
+          }),
+          {} as Record<SlotKey, DesignElement[]>
+        );
+      });
+
+      // Merge saved elements
+      if (savedDesign.elements) {
+        Object.keys(savedDesign.elements).forEach((colorKey) => {
+          if (mergedElements[colorKey]) {
+            mergedElements[colorKey] = savedDesign.elements[colorKey];
+          } else {
+            // Color doesn't exist in current product, but preserve it anyway
+            mergedElements[colorKey] = savedDesign.elements[colorKey];
+          }
+        });
+      }
+
+      // Convert uploaded images from printLocations to logo elements
+      if (savedDesign.printLocations) {
+        Object.keys(savedDesign.printLocations).forEach((colorKey) => {
+          const printLocations = savedDesign.printLocations![colorKey];
+          if (!mergedElements[colorKey]) {
+            mergedElements[colorKey] = SLOT_KEYS.reduce(
+              (slotAcc, slot) => ({
+                ...slotAcc,
+                [slot]: [],
+              }),
+              {} as Record<SlotKey, DesignElement[]>
+            );
+          }
+
+          printLocations.forEach((location) => {
+            if (location.uploadedImage && location.slot) {
+              // Check if there are already elements for this slot
+              const existingElements = location.elements || [];
+
+              // Check if the uploaded image is already represented as a logo element
+              const hasUploadedImageAsElement = existingElements.some(
+                (el) =>
+                  el.type === "logo" && el.imageData === location.uploadedImage
+              );
+
+              if (!hasUploadedImageAsElement) {
+                // Convert uploaded image to a logo element
+                // Position it to fill the bounding box by default (same as in ProductDetailView)
+                const newElement: DesignElement = {
+                  id: `uploaded-${location.slot}-${Date.now()}`,
+                  type: "logo",
+                  x: 0, // Fill the bounding box (0% from left, 0% from top)
+                  y: 0,
+                  width: 100, // 100% width and height to fill the box
+                  height: 100,
+                  rotation: 0,
+                  zIndex: existingElements.length,
+                  imageData: location.uploadedImage,
+                };
+
+                // Merge existing elements with the new uploaded image element
+                mergedElements[colorKey][location.slot] = [
+                  ...existingElements,
+                  newElement,
+                ];
+              } else {
+                // Use existing elements (which already include the uploaded image)
+                mergedElements[colorKey][location.slot] = existingElements;
+              }
+            } else if (location.elements && location.elements.length > 0) {
+              // Use elements from printLocations
+              mergedElements[colorKey][location.slot] = location.elements;
+            }
+          });
+        });
+      }
+
+      setElements(mergedElements);
+
+      // Restore selected color if it exists in the saved design and current product
+      if (savedDesign.selectedColor) {
+        const colorExists = colorEntries.find(
+          ([key]) => key === savedDesign.selectedColor
+        );
+        if (colorExists) {
+          setSelectedColor(savedDesign.selectedColor);
+        }
+      }
+
+      toast.success("Previous design loaded!");
+    }
+  }, [product._id, colorEntries]);
   const [selectedElementId, setSelectedElementId] = useState<string | null>(
     null
   );
@@ -229,13 +362,28 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
   };
 
   const bringToFront = (id: string) => {
-    const maxZ = Math.max(...currentElements.map((el) => el.zIndex), -1);
+    const maxZ = Math.max(...currentElements.map((el) => el.zIndex || 0), -1);
     updateElement(id, { zIndex: maxZ + 1 });
   };
 
   const sendToBack = (id: string) => {
-    const minZ = Math.min(...currentElements.map((el) => el.zIndex), 0);
-    updateElement(id, { zIndex: minZ - 1 });
+    // Find the minimum zIndex of all OTHER elements (excluding the current one)
+    const otherElements = currentElements.filter((el) => el.id !== id);
+    if (otherElements.length === 0) {
+      // No other elements, just set to 0
+      updateElement(id, { zIndex: 0 });
+      return;
+    }
+
+    // Get all zIndex values from other elements, defaulting to 0 if undefined
+    const otherZIndices = otherElements.map((el) => el.zIndex ?? 0);
+    const minZ = Math.min(...otherZIndices);
+
+    // If minimum is greater than 0, set to 0 (behind all others but still visible)
+    // If minimum is 0, set to 0 as well (at the same level as the backmost element)
+    // This ensures the element is "just under all the other elements" but still over the product image
+    const newZIndex = minZ > 0 ? 0 : minZ;
+    updateElement(id, { zIndex: newZIndex });
   };
 
   const handleMouseDown = (e: React.MouseEvent, elementId: string) => {
@@ -535,7 +683,7 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
       height: `${element.height}%`,
       transform: `rotate(${element.rotation}deg)`,
       transformOrigin: "center center",
-      zIndex: element.zIndex,
+      zIndex: element.zIndex ?? 0,
       cursor:
         isSelected && !isDragging && !isResizing && !isRotating
           ? "move"
@@ -593,11 +741,29 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
         );
         break;
       case "qrcode":
-        content = (
+        content = element.qrValue ? (
+          <div className="w-full h-full flex items-center justify-center bg-white p-1">
+            <QRCodeSVG
+              value={element.qrValue}
+              size={200}
+              level="H"
+              includeMargin={false}
+              style={{ maxWidth: "100%", maxHeight: "100%" }}
+            />
+          </div>
+        ) : (
           <div className="w-full h-full flex items-center justify-center bg-white border-2 border-neutral-300 rounded">
             <div className="text-xs text-neutral-500">QR Code</div>
           </div>
         );
+        break;
+      case "fill":
+        content = element.fillColor ? (
+          <div
+            className="w-full h-full"
+            style={{ backgroundColor: element.fillColor }}
+          />
+        ) : null;
         break;
       case "shape":
         const shapeStyle: React.CSSProperties = {
@@ -800,16 +966,55 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
               </div>
               <div>
                 <label className="text-sm text-neutral-600">Color</label>
-                <input
-                  type="color"
-                  value={selectedElement.textColor || "#000000"}
-                  onChange={(e) =>
-                    updateElement(selectedElement.id, {
-                      textColor: e.target.value,
-                    })
-                  }
-                  className="mt-1 h-10 w-full cursor-pointer rounded-lg border border-neutral-200 bg-white"
-                />
+                <div className="mt-1 flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={
+                      selectedElement.textColor ||
+                      (selectedColor.startsWith("#")
+                        ? selectedColor
+                        : (
+                            colorEntries.find(
+                              ([key]) => key === selectedColor
+                            )?.[0] as string | undefined
+                          )?.startsWith("#")
+                        ? (colorEntries.find(
+                            ([key]) => key === selectedColor
+                          )?.[0] as string)
+                        : "#000000")
+                    }
+                    onChange={(e) =>
+                      updateElement(selectedElement.id, {
+                        textColor: e.target.value,
+                      })
+                    }
+                    className="h-10 flex-1 cursor-pointer rounded-lg border border-neutral-200 bg-white"
+                  />
+                  <button
+                    onClick={() =>
+                      updateElement(selectedElement.id, {
+                        textColor: undefined,
+                      })
+                    }
+                    className="h-10 w-10 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 flex items-center justify-center"
+                    title="Remove color"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-5 w-5 text-neutral-500"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
               </div>
               <div>
                 <label className="text-sm text-neutral-600">
@@ -823,23 +1028,6 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
                   onChange={(e) =>
                     updateElement(selectedElement.id, {
                       fontSize: Number(e.target.value),
-                    })
-                  }
-                  className="mt-1 w-full"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-neutral-600">
-                  Rotation: {selectedElement.rotation}°
-                </label>
-                <input
-                  type="range"
-                  min="-180"
-                  max="180"
-                  value={selectedElement.rotation || 0}
-                  onChange={(e) =>
-                    updateElement(selectedElement.id, {
-                      rotation: Number(e.target.value),
                     })
                   }
                   className="mt-1 w-full"
@@ -872,23 +1060,6 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
                 className="mt-2 w-full text-sm text-neutral-600 file:mr-4 file:rounded-full file:border-0 file:bg-brand/10 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-brand hover:file:bg-brand/20"
               />
             </div>
-            <div>
-              <label className="text-sm text-neutral-600">
-                Rotation: {selectedElement.rotation || 0}°
-              </label>
-              <input
-                type="range"
-                min="-180"
-                max="180"
-                value={selectedElement.rotation || 0}
-                onChange={(e) =>
-                  updateElement(selectedElement.id, {
-                    rotation: Number(e.target.value),
-                  })
-                }
-                className="mt-1 w-full"
-              />
-            </div>
           </div>
         )}
 
@@ -896,7 +1067,7 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
           <div className="space-y-4">
             <div>
               <label className="text-sm font-medium text-neutral-700">
-                QR Code URL
+                QR Code Content
               </label>
               <input
                 type="text"
@@ -904,26 +1075,13 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
                 onChange={(e) =>
                   updateElement(selectedElement.id, { qrValue: e.target.value })
                 }
-                placeholder="https://example.com"
+                placeholder="https://example.com or tel:+1234567890"
                 className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
-            </div>
-            <div>
-              <label className="text-sm text-neutral-600">
-                Rotation: {selectedElement.rotation || 0}°
-              </label>
-              <input
-                type="range"
-                min="-180"
-                max="180"
-                value={selectedElement.rotation || 0}
-                onChange={(e) =>
-                  updateElement(selectedElement.id, {
-                    rotation: Number(e.target.value),
-                  })
-                }
-                className="mt-1 w-full"
-              />
+              <p className="mt-1 text-xs text-neutral-500">
+                Enter URL, phone (tel:+1234567890), email
+                (mailto:email@example.com), or text
+              </p>
             </div>
           </div>
         )}
@@ -955,33 +1113,55 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
               <label className="text-sm font-medium text-neutral-700">
                 Color
               </label>
-              <input
-                type="color"
-                value={selectedElement.shapeColor || "#000000"}
-                onChange={(e) =>
-                  updateElement(selectedElement.id, {
-                    shapeColor: e.target.value,
-                  })
-                }
-                className="mt-2 h-12 w-full cursor-pointer rounded-lg border border-neutral-200 bg-white"
-              />
-            </div>
-            <div>
-              <label className="text-sm text-neutral-600">
-                Rotation: {selectedElement.rotation || 0}°
-              </label>
-              <input
-                type="range"
-                min="-180"
-                max="180"
-                value={selectedElement.rotation || 0}
-                onChange={(e) =>
-                  updateElement(selectedElement.id, {
-                    rotation: Number(e.target.value),
-                  })
-                }
-                className="mt-1 w-full"
-              />
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  type="color"
+                  value={
+                    selectedElement.shapeColor ||
+                    (selectedColor.startsWith("#")
+                      ? selectedColor
+                      : (
+                          colorEntries.find(
+                            ([key]) => key === selectedColor
+                          )?.[0] as string | undefined
+                        )?.startsWith("#")
+                      ? (colorEntries.find(
+                          ([key]) => key === selectedColor
+                        )?.[0] as string)
+                      : "#000000")
+                  }
+                  onChange={(e) =>
+                    updateElement(selectedElement.id, {
+                      shapeColor: e.target.value,
+                    })
+                  }
+                  className="h-12 flex-1 cursor-pointer rounded-lg border border-neutral-200 bg-white"
+                />
+                <button
+                  onClick={() =>
+                    updateElement(selectedElement.id, {
+                      shapeColor: undefined,
+                    })
+                  }
+                  className="h-12 w-12 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 flex items-center justify-center"
+                  title="Remove color"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-5 w-5 text-neutral-500"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -1022,11 +1202,15 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
+    <div className="grid gap-6 lg:grid-cols-[1fr_550px] min-h-full">
       {/* Left: Product Preview */}
       <div className="space-y-4">
         <Link
-          href={`/product/${product._id}`}
+          href={`/product/${product._id}?color=${
+            selectedColor !== "Gold"
+              ? encodeURIComponent(selectedColor)
+              : "default"
+          }`}
           className="flex items-center gap-2 text-sm text-neutral-600 hover:text-neutral-900"
         >
           <Image src="/left.svg" alt="Back" width={20} height={20} />
@@ -1042,14 +1226,13 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
                 transform: `scale(${zoom})`,
                 transformOrigin: "top left",
               }}
-              className="relative"
+              className="relative aspect-[10/10]"
             >
               <Image
                 src={mockup}
                 alt={`${selectedSlot} mockup`}
-                width={640}
-                height={800}
-                className="w-full object-contain"
+                fill
+                className="object-contain"
                 data-product-image
               />
               <div
@@ -1116,45 +1299,7 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
       </div>
 
       {/* Right: Controls */}
-      <div className="space-y-6">
-        {/* Color Picker */}
-        <div className="rounded-2xl border border-neutral-200 p-4">
-          <label className="text-sm font-semibold text-neutral-800 mb-2 block">
-            Color
-          </label>
-          <div className="flex items-center gap-3">
-            <input
-              type="color"
-              value={(() => {
-                if (selectedColor.startsWith("#")) {
-                  return selectedColor;
-                }
-                const foundKey = colorEntries.find(
-                  ([key]) => key === selectedColor
-                )?.[0] as string | undefined;
-                if (foundKey?.startsWith("#")) {
-                  return foundKey;
-                }
-                return "#000000";
-              })()}
-              onChange={(e) => {
-                const hex = e.target.value;
-                // Find or create color entry
-                const existing = colorEntries.find(([key]) => key === hex);
-                if (!existing) {
-                  setSelectedColor(hex);
-                } else {
-                  setSelectedColor(hex);
-                }
-              }}
-              className="h-12 w-12 cursor-pointer rounded-lg border border-neutral-200 bg-white"
-            />
-            <div className="flex-1 text-sm text-neutral-600">
-              {selectedColor.startsWith("#") ? selectedColor : "Default"}
-            </div>
-          </div>
-        </div>
-
+      <div className="space-y-6 lg:pt-12">
         {/* Image Upload Section */}
         {!activePanel && (
           <div className="rounded-2xl border border-neutral-200 p-4">
@@ -1213,20 +1358,13 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
                 onClick={() => addElement("qrcode")}
                 className="flex flex-col items-center justify-center rounded-lg border border-neutral-200 p-4 hover:bg-neutral-50 transition"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-8 w-8 text-neutral-600 mb-2"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4M12 8h4.01M4 8h4.01M4 16h4.01M12 16h4.01M4 20h4.01M16 4h4M4 4h4.01"
-                  />
-                </svg>
+                <Image
+                  src="/qr_code.svg"
+                  alt="QR Code"
+                  width={32}
+                  height={32}
+                  className="mb-2"
+                />
                 <span className="text-xs font-medium text-neutral-700">
                   QR Code
                 </span>
@@ -1235,20 +1373,13 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
                 onClick={() => addElement("text")}
                 className="flex flex-col items-center justify-center rounded-lg border border-neutral-200 p-4 hover:bg-neutral-50 transition"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-8 w-8 text-neutral-600 mb-2"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 6h16M4 12h16M4 18h7"
-                  />
-                </svg>
+                <Image
+                  src="/text.svg"
+                  alt="Text"
+                  width={32}
+                  height={32}
+                  className="mb-2"
+                />
                 <span className="text-xs font-medium text-neutral-700">
                   Text
                 </span>
@@ -1257,20 +1388,13 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
                 onClick={() => addElement("logo")}
                 className="flex flex-col items-center justify-center rounded-lg border border-neutral-200 p-4 hover:bg-neutral-50 transition"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-8 w-8 text-neutral-600 mb-2"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                  />
-                </svg>
+                <Image
+                  src="/logo.svg"
+                  alt="Logo"
+                  width={32}
+                  height={32}
+                  className="mb-2"
+                />
                 <span className="text-xs font-medium text-neutral-700">
                   Logo
                 </span>
@@ -1279,20 +1403,13 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
                 onClick={() => addElement("shape")}
                 className="flex flex-col items-center justify-center rounded-lg border border-neutral-200 p-4 hover:bg-neutral-50 transition"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-8 w-8 text-neutral-600 mb-2"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 6h16M4 12h16M4 18h16"
-                  />
-                </svg>
+                <Image
+                  src="/shapes.svg"
+                  alt="Shapes"
+                  width={32}
+                  height={32}
+                  className="mb-2"
+                />
                 <span className="text-xs font-medium text-neutral-700">
                   Shapes
                 </span>
@@ -1307,20 +1424,58 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
         {/* Save and Proceed Button */}
         <button
           onClick={() => {
-            // Save the design to localStorage with product ID
-            const designData = {
+            // Convert elements to printLocations format for consistency
+            const printLocationsByColor: Record<string, PrintLocation[]> = {};
+
+            Object.keys(elements).forEach((colorKey) => {
+              const colorElements = elements[colorKey];
+              const locations: PrintLocation[] = [];
+
+              SLOT_KEYS.forEach((slot) => {
+                const slotElements = colorElements[slot] || [];
+                if (slotElements.length > 0) {
+                  locations.push({
+                    slot,
+                    elements: slotElements,
+                  });
+                }
+              });
+
+              if (locations.length > 0) {
+                printLocationsByColor[colorKey] = locations;
+              }
+            });
+
+            // Load existing design to preserve other colors
+            const existingDesign = loadDesign(product._id);
+
+            // Merge with existing design to preserve other colors
+            const mergedElements = existingDesign?.elements || {};
+            const mergedPrintLocations = existingDesign?.printLocations || {};
+
+            // Update current color's data
+            mergedElements[selectedColor] = elements[selectedColor];
+            mergedPrintLocations[selectedColor] =
+              printLocationsByColor[selectedColor] || [];
+
+            // Save the design using shared utility
+            const designData: SavedDesign = {
               productId: product._id,
               selectedColor,
-              elements,
+              elements: mergedElements,
+              printLocations: mergedPrintLocations,
               timestamp: Date.now(),
             };
-            localStorage.setItem(
-              `customization_${product._id}`,
-              JSON.stringify(designData)
-            );
+            saveDesign(designData);
             toast.success("Design saved!");
-            // Redirect to product detail page
-            router.push(`/product/${product._id}?customized=true`);
+            // Redirect to product detail page with the selected color preserved
+            const colorParam =
+              selectedColor !== "Gold"
+                ? encodeURIComponent(selectedColor)
+                : "default";
+            router.push(
+              `/product/${product._id}?customized=true&color=${colorParam}`
+            );
           }}
           className="w-full rounded-lg bg-[var(--color-button)] px-6 py-4 text-center text-white text-sm font-semibold shadow shadow-[var(--color-button)]/30 transition hover:bg-[var(--color-button-hover)]"
         >

@@ -50,7 +50,7 @@ const Modal: React.FC<ModalProps> = ({
         className={cn(
           'bg-white rounded-2xl shadow-2xl w-full',
           sizeClasses[size],
-          'max-h-[90vh] overflow-y-auto',
+          'max-h-[90vh]',
           className
         )}
         onClick={(e) => e.stopPropagation()}
