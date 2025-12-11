@@ -14,12 +14,14 @@
     "@types/qrcode": "^1.5.6",
     "axios": "^1.6.0",
     "bcryptjs": "^2.4.3",
+    "canvas": "^3.2.0",
     "clsx": "^2.1.1",
     "crypto": "^1.0.1",
     "framer-motion": "^12.9.2",
     "imagekit": "^6.0.0",
     "js-cookie": "^3.0.5",
     "jsonwebtoken": "^9.0.0",
+    "lucide-react": "^0.556.0",
     "mongoose": "^8.0.0",
     "next": "15.3.1",
     "next-auth": "^4.24.0",
@@ -50,5 +52,6 @@
     "tailwindcss": "^4",
     "tsx": "^4.20.6",
     "typescript": "^5"
-  }
+  },
+  "packageManager": "yarn@4.5.1+sha512.341db9396b6e289fecc30cd7ab3af65060e05ebff4b3b47547b278b9e67b08f485ecd8c79006b405446262142c7a38154445ef7f17c1d5d1de7d90bf9ce7054d"
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -204,7 +204,7 @@ function hasActualCustomization(
   return false;
 }
 
-export default function CheckoutPage() {
+function CheckoutPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isAuthenticated, token, _hasHydrated, user } = useAuthStore();
@@ -276,6 +276,18 @@ export default function CheckoutPage() {
     } else {
       // Regular checkout from cart
       setIsSamplePurchase(false);
+      console.log('=== SETTING CHECKOUT ITEMS FROM CART ===');
+      console.log('itemsWithDetails:', itemsWithDetails);
+      itemsWithDetails.forEach((item, index) => {
+        console.log(`Cart Item ${index}:`, {
+          productId: item.productId,
+          quantity: item.quantity,
+          size: item.size,
+          color: item.color,
+          hasCustomization: !!item.customization,
+          customization: item.customization ? JSON.stringify(item.customization, null, 2) : null,
+        });
+      });
       setCheckoutItems(itemsWithDetails);
     }
   }, [searchParams, itemsWithDetails, router]);
@@ -620,16 +632,53 @@ export default function CheckoutPage() {
                     }
 
                     try {
-                      // Prepare order items
-                      const orderItems = checkoutItems.map((item) => ({
-                        product: item.productId,
-                        quantity: item.quantity,
-                        size: item.size || "",
-                        color: item.color || "",
-                        price: item.product?.price || 0,
-                      }));
+                      // Prepare order items with customization details
+                      console.log('=== CHECKOUT ITEMS BEFORE MAPPING ===');
+                      checkoutItems.forEach((item, index) => {
+                        console.log(`Item ${index}:`, {
+                          productId: item.productId,
+                          quantity: item.quantity,
+                          size: item.size,
+                          color: item.color,
+                          hasCustomization: !!item.customization,
+                          customization: item.customization ? JSON.stringify(item.customization, null, 2) : null,
+                        });
+                      });
 
-                      // Create order
+                      const orderItems = checkoutItems.map((item) => {
+                        // Explicitly include customization - don't use || null as it might filter out empty objects
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const orderItem: any = {
+                          product: item.productId,
+                          quantity: item.quantity,
+                          size: item.size || "",
+                          color: item.color || "",
+                          price: item.product?.price || 0,
+                        };
+                        
+                        // Only add customization if it exists and has content
+                        if (item.customization && hasActualCustomization(item.customization)) {
+                          orderItem.customization = item.customization;
+                        } else {
+                          orderItem.customization = null;
+                        }
+                        
+                        return orderItem;
+                      });
+
+                      console.log('=== ORDER ITEMS TO SEND ===');
+                      orderItems.forEach((item, index) => {
+                        console.log(`Order Item ${index}:`, {
+                          product: item.product,
+                          quantity: item.quantity,
+                          size: item.size,
+                          color: item.color,
+                          hasCustomization: !!item.customization,
+                          customization: item.customization ? JSON.stringify(item.customization, null, 2) : null,
+                        });
+                      });
+
+                      // Create order directly (bypass Razorpay)
                       const response = await fetch("/api/orders", {
                         method: "POST",
                         headers: {
@@ -647,10 +696,10 @@ export default function CheckoutPage() {
                             postalCode: selectedAddress.pincode,
                           },
                           payment: {
-                            method:
-                              paymentMethod === "cod" ? "cod" : "razorpay",
+                            method: paymentMethod === "cod" ? "cod" : "cod", // Always use COD for now
+                            status: "pending",
                           },
-                        }),
+                        }, null, 2), // Pretty print for debugging
                       });
 
                       if (!response.ok) {
@@ -693,5 +742,23 @@ export default function CheckoutPage() {
         <CorporateGiftsSection />
       </div>
     </>
+  );
+}
+
+export default function CheckoutPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-neutral-50">
+          <div className="mx-auto w-full max-w-7xl px-4 py-12">
+            <div className="flex items-center justify-center min-h-[60vh]">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#FF9AA2]"></div>
+            </div>
+          </div>
+        </div>
+      }
+    >
+      <CheckoutPageContent />
+    </Suspense>
   );
 }

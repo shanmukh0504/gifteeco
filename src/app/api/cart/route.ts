@@ -427,6 +427,19 @@ export async function PATCH(req: Request) {
           itemHash === cartItemId
         );
       });
+    } else {
+      // For non-customized products without cartItemId, match by productId, size, and color only
+      // Also ensure the item has no customization
+      itemIndex = userDoc.cart.findIndex((item: CartItem) => {
+        const hasNoCustomization = !item.customization || 
+          (typeof item.customization === 'object' && Object.keys(item.customization).length === 0);
+        return (
+          item.product.toString() === productId &&
+          item.size === oldSize &&
+          item.color === color &&
+          hasNoCustomization
+        );
+      });
     }
 
     if (itemIndex === -1) {
@@ -450,8 +463,12 @@ export async function PATCH(req: Request) {
       } else if (cartItemId) {
         const itemHash = getCustomizationHash(item.customization);
         return itemHash === cartItemId;
+      } else {
+        // For non-customized products, check if item has no customization
+        const hasNoCustomization = !item.customization || 
+          (typeof item.customization === 'object' && Object.keys(item.customization).length === 0);
+        return hasNoCustomization;
       }
-      return false;
     });
 
     if (existingItemIndex >= 0 && existingItemIndex !== itemIndex) {

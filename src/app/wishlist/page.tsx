@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import useWishlistStore from "@/store/useWishlistStore";
@@ -20,19 +20,56 @@ type Product = {
   price: number;
   description?: string;
   category?: { _id: string; name: string; slug: string } | string;
-  noColor?: { images?: string[] };
-  colors?: Record<string, { images: string[] }>;
+  noColor?: { 
+    images?: string[];
+    customization?: Record<string, { mockupImage?: string }>;
+  };
+  colors?: Record<string, { 
+    images: string[];
+    customization?: Record<string, { mockupImage?: string }>;
+  }>;
   deliveryTimeInDays?: number | null;
+  minQuantity?: number;
+  sizes?: string[];
   ratingsSummary?: {
     average: number;
     count: number;
   };
 };
 
-function getPrimaryImage(p: Product): string | undefined {
+type WishlistItem = {
+  productId: string;
+  colorKey?: string;
+  product: Product;
+};
+
+function getPrimaryImage(p: Product, colorKey?: string): string | undefined {
+  // If colorKey is provided and product has that color, use it
+  if (colorKey && p.colors && p.colors[colorKey]) {
+    return p.colors[colorKey].images?.[0];
+  }
+  // Otherwise, use first color or noColor
   const colorEntries = p.colors ? Object.values(p.colors) : [];
   const firstColor = colorEntries[0];
   return firstColor?.images?.[0] ?? p.noColor?.images?.[0];
+}
+
+// Helper to parse wishlist key (productId or productId-colorKey)
+function parseWishlistKey(key: string): { productId: string; colorKey?: string } {
+  // Check if key contains a hex color (starts with #)
+  const hashIndex = key.lastIndexOf('#');
+  if (hashIndex > 0) {
+    // Split at the last '-' before the '#'
+    const beforeHash = key.substring(0, hashIndex);
+    const lastDashIndex = beforeHash.lastIndexOf('-');
+    if (lastDashIndex > 0) {
+      return {
+        productId: key.substring(0, lastDashIndex),
+        colorKey: key.substring(lastDashIndex + 1),
+      };
+    }
+  }
+  return { productId: key };
 }
 
 function getEstimatedDeliveryDate(
@@ -51,20 +88,29 @@ function getEstimatedDeliveryDate(
 export default function WishlistPage() {
   const { token, isAuthenticated, _hasHydrated } = useAuthStore();
   const wishlistItems = useWishlistStore((state) => state.items);
-  const removeItem = useWishlistStore((state) => state.removeItem);
+  const removeWishlistItem = useWishlistStore((state) => state.removeItem);
   const syncWithServer = useWishlistStore((state) => state.syncWithServer);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [wishlistItemsWithProducts, setWishlistItemsWithProducts] = useState<WishlistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const addItem = useCartStore((state) => state.addItem);
+  const removeCartItem = useCartStore((state) => state.removeItem);
   const getItemQuantity = useCartStore((state) => state.getItemQuantity);
+  const hasFetchedRef = useRef(false);
+  const isFetchingRef = useRef(false);
 
+  // Initial fetch - only when auth state changes
   useEffect(() => {
-    if (_hasHydrated && isAuthenticated && token) {
+    if (!_hasHydrated) return;
+    
+    if (isAuthenticated && token && !hasFetchedRef.current) {
+      hasFetchedRef.current = true;
       fetchWishlist();
-    } else if (_hasHydrated && !isAuthenticated) {
+    } else if (!isAuthenticated && !hasFetchedRef.current) {
+      hasFetchedRef.current = true;
       fetchLocalWishlist();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [_hasHydrated, isAuthenticated, token]);
 
   const fetchWishlist = async () => {
@@ -84,9 +130,15 @@ export default function WishlistPage() {
       if (response.ok) {
         const data = await response.json();
         const serverProducts = data.wishlist || [];
-        setProducts(serverProducts);
+        // For server wishlist, we only have productIds, so we'll merge with local color variants
         const serverIds = serverProducts.map((p: Product) => p._id);
+        // Sync with server (this will merge server items with local color variants)
         syncWithServer(serverIds);
+        // Fetch local wishlist which includes color variants
+        // Use setTimeout to ensure syncWithServer completes before fetching
+        setTimeout(() => {
+          fetchLocalWishlist();
+        }, 50);
       } else if (response.status === 401) {
         fetchLocalWishlist();
       } else {
@@ -101,32 +153,68 @@ export default function WishlistPage() {
   };
 
   const fetchLocalWishlist = async () => {
+    // Prevent concurrent calls
+    if (isFetchingRef.current) return;
+    
     if (wishlistItems.length === 0) {
-      setProducts([]);
+      setWishlistItemsWithProducts([]);
       return;
     }
 
+    isFetchingRef.current = true;
     try {
-      const productPromises = wishlistItems.map((id) =>
-        fetch(`/api/products/${id}`).then((res) => res.json())
+      // Parse wishlist items to extract productId and colorKey
+      const parsedItems = wishlistItems.map((key) => parseWishlistKey(key));
+      
+      // Get unique productIds
+      const uniqueProductIds = [...new Set(parsedItems.map(item => item.productId))];
+      
+      // Fetch all products
+      const productPromises = uniqueProductIds.map((productId) =>
+        fetch(`/api/products/${productId}`).then((res) => res.json())
       );
       const productData = await Promise.all(productPromises);
-      setProducts(productData.filter((p) => p && !p.error));
+      const validProducts = productData.filter((p) => p && !p.error);
+      
+      // Create a map of productId -> Product
+      const productMap = new Map(validProducts.map((p: Product) => [p._id, p]));
+      
+      // Create wishlist items with product and colorKey
+      const itemsWithProducts: WishlistItem[] = parsedItems
+        .map(({ productId, colorKey }) => {
+          const product = productMap.get(productId);
+          if (!product) return null;
+          const item: WishlistItem = { 
+            productId, 
+            colorKey: colorKey || undefined, 
+            product 
+          };
+          return item;
+        })
+        .filter((item): item is WishlistItem => item !== null);
+      
+      setWishlistItemsWithProducts(itemsWithProducts);
     } catch (error) {
       console.error("Error fetching local wishlist products:", error);
-      setProducts([]);
+      setWishlistItemsWithProducts([]);
+    } finally {
+      isFetchingRef.current = false;
     }
   };
 
-  const handleRemoveFromWishlist = async (productId: string) => {
+  const handleRemoveFromWishlist = async (productId: string, colorKey?: string) => {
     try {
       if (!isAuthenticated || !token) {
         setShowAuthModal(true);
         return;
       }
 
-      await removeItem(productId, token, () => setShowAuthModal(true));
-      setProducts((prev) => prev.filter((p) => p._id !== productId));
+      await removeWishlistItem(productId, token, () => setShowAuthModal(true), colorKey);
+      setWishlistItemsWithProducts((prev) => 
+        prev.filter((item) => 
+          item.productId !== productId || item.colorKey !== colorKey
+        )
+      );
       toast.success("Removed from wishlist");
     } catch (error) {
       console.error("Error removing from wishlist:", error);
@@ -134,20 +222,82 @@ export default function WishlistPage() {
     }
   };
 
-  const handleAddToCart = async (product: Product) => {
+  // Helper function to check if product has customization options
+  const hasCustomizationOptions = (product: Product): boolean => {
+    if (product.colors) {
+      for (const colorData of Object.values(product.colors)) {
+        const customization = colorData?.customization;
+        if (customization) {
+          const slots = ["front", "back", "chest"];
+          for (const slot of slots) {
+            if (customization[slot]?.mockupImage) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+    if (product.noColor?.customization) {
+      const slots = ["front", "back", "chest"];
+      for (const slot of slots) {
+        if (product.noColor.customization[slot]?.mockupImage) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  const handleAddToCart = async (product: Product, colorKey?: string) => {
     if (!isAuthenticated || !token) {
       setShowAuthModal(true);
       return;
     }
 
+    // If product has customization options, redirect to product page
+    if (hasCustomizationOptions(product)) {
+      const productUrl = colorKey 
+        ? `/product/${product._id}?color=${encodeURIComponent(colorKey)}`
+        : `/product/${product._id}`;
+      window.location.href = productUrl;
+      return;
+    }
+
     try {
-      await addItem({ productId: product._id, quantity: 1 }, token, () =>
-        setShowAuthModal(true)
-      );
-      toast.success("Added to cart");
+      const minQuantity = product.minQuantity || 1;
+      const cartQuantity = getItemQuantity(product._id);
+      
+      // Determine color - use colorKey from wishlist if available, otherwise undefined
+      const color = colorKey && colorKey !== "Gold" && colorKey !== "default" 
+        ? colorKey 
+        : undefined;
+
+      if (cartQuantity > 0) {
+        // Remove from cart if already in cart
+        await removeCartItem(product._id, undefined, undefined, token, () =>
+          setShowAuthModal(true)
+        );
+        toast.success("Removed from cart");
+      } else {
+        // Add to cart with minimum quantity and color
+        await addItem(
+          { 
+            productId: product._id, 
+            quantity: minQuantity,
+            color: color
+          }, 
+          token, 
+          () => setShowAuthModal(true)
+        );
+        toast.success("Added to cart");
+      }
     } catch (error) {
       console.error("Error adding to cart:", error);
-      toast.error("Failed to add to cart");
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to add to cart";
+      toast.error(errorMessage);
     }
   };
 
@@ -188,7 +338,7 @@ export default function WishlistPage() {
             Back to products
         </Link>
 
-          {products.length === 0 ? (
+          {wishlistItemsWithProducts.length === 0 ? (
             <div className="rounded-2xl p-12 text-center">
               <div className="mx-auto mb-6 flex justify-center">
                 <Image
@@ -212,23 +362,33 @@ export default function WishlistPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {products.map((product) => {
-                const img = getPrimaryImage(product);
+              {wishlistItemsWithProducts.map((item) => {
+                const { product, colorKey } = item;
+                const img = getPrimaryImage(product, colorKey);
                 const estimatedDelivery = getEstimatedDeliveryDate(
                   product.deliveryTimeInDays
                 );
-                const cartQuantity = getItemQuantity(product._id);
+                // Determine color for cart quantity check
+                const colorForCart = colorKey && colorKey !== "Gold" && colorKey !== "default" 
+                  ? colorKey 
+                  : undefined;
+                const cartQuantity = getItemQuantity(product._id, undefined, colorForCart);
                 const categoryName =
                   typeof product.category === "object"
                     ? product.category?.name
                     : "";
+                
+                // Build product URL with color parameter
+                const productUrl = colorKey 
+                  ? `/product/${product._id}?color=${encodeURIComponent(colorKey)}`
+                  : `/product/${product._id}`;
 
                 return (
                   <div
-                    key={product._id}
+                    key={`${product._id}-${colorKey || 'default'}`}
                     className="group relative bg-white rounded-2xl border border-neutral-200 overflow-hidden hover:shadow-lg transition-shadow"
                   >
-                    <Link href={`/product/${product._id}`} className="block">
+                    <Link href={productUrl} className="block">
                       <div className="relative aspect-[4/5] w-full overflow-hidden bg-neutral-100">
                         {img ? (
                           <Image
@@ -253,7 +413,7 @@ export default function WishlistPage() {
                           </span>
                         )}
                       </div>
-                      <Link href={`/product/${product._id}`}>
+                      <Link href={productUrl}>
                         <h3 className="text-sm font-semibold text-neutral-900 mb-2 line-clamp-2 hover:text-[#FF9AA2] transition">
                           {product.name}
                         </h3>
@@ -290,7 +450,7 @@ export default function WishlistPage() {
                         <Button
                           onClick={(e) => {
                             e.preventDefault();
-                            handleAddToCart(product);
+                            handleAddToCart(product, colorKey);
                           }}
                           className="flex-1"
                           size="sm"
@@ -318,7 +478,7 @@ export default function WishlistPage() {
                         <button
                           onClick={(e) => {
                             e.preventDefault();
-                            handleRemoveFromWishlist(product._id);
+                            handleRemoveFromWishlist(product._id, colorKey);
                           }}
                           className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition"
                           aria-label="Remove from wishlist"
@@ -344,7 +504,7 @@ export default function WishlistPage() {
             </div>
           )}
         </div>
-        {products.length === 0 && (
+        {wishlistItemsWithProducts.length === 0 && (
           <div className="mt-12">
             <WelcomeKitsSection />
             <TrendingSection />

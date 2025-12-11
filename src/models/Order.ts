@@ -20,9 +20,110 @@ const OrderSchema = new mongoose.Schema({
       type: String,
       required: true
     },
+    color: {
+      type: String,
+      default: ''
+    },
     price: {
       type: Number,
       required: true
+    },
+    customization: {
+      printLocations: [{
+        slot: {
+          type: String,
+          enum: ['front', 'back', 'chest'],
+        },
+        uploadedImage: {
+          type: String,
+          default: null,
+        }, // ImageKit URL - uploaded image by customer
+        mockupImage: {
+          type: String,
+          default: null,
+        }, // ImageKit URL - Mockup image for this specific slot
+        elements: [{
+          type: {
+            type: String,
+            enum: ['text', 'logo', 'qrcode', 'shape', 'fill'],
+            required: true,
+          },
+          // Text element fields
+          textValue: {
+            type: String,
+            default: null,
+          },
+          fontFamily: {
+            type: String,
+            default: null,
+          },
+          fontSize: {
+            type: Number,
+            default: null,
+          },
+          textColor: {
+            type: String,
+            default: null,
+          },
+          // QR code element fields
+          qrValue: {
+            type: String,
+            default: null,
+          }, // QR code content/text
+          // Shape element fields
+          shapeType: {
+            type: String,
+            enum: ['circle', 'square', 'triangle'],
+            default: null,
+          },
+          shapeColor: {
+            type: String,
+            default: null,
+          },
+          // Logo element fields
+          imageData: {
+            type: String,
+            default: null,
+          }, // ImageKit URL for uploaded logos
+          // Position and size fields
+          x: {
+            type: Number,
+            default: null,
+          },
+          y: {
+            type: Number,
+            default: null,
+          },
+          width: {
+            type: Number,
+            default: null,
+          },
+          height: {
+            type: Number,
+            default: null,
+          },
+          rotation: {
+            type: Number,
+            default: null,
+          },
+          zIndex: {
+            type: Number,
+            default: null,
+          },
+        }]
+      }],
+      printSize: {
+        type: String,
+        default: null,
+      },
+      mockupImage: {
+        type: String,
+        default: null,
+      }, // ImageKit URL - Final mockup image with all customizations applied
+      elements: {
+        type: mongoose.Schema.Types.Mixed,
+        default: null,
+      }, // Full elements structure (legacy format)
     }
   }],
   shippingInfo: {

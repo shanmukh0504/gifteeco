@@ -17,6 +17,7 @@ import type {
 import { saveDesign } from "@/lib/designStorage";
 import { useRouter } from "next/navigation";
 import QRCode from "qrcode";
+import { QRCodeSVG } from "qrcode.react";
 
 type CustomizedDetailsModalProps = {
   isOpen: boolean;
@@ -45,14 +46,15 @@ type CustomizedDetailsModalProps = {
   };
 };
 
-// Helper function to create composite image with elements overlaid on mockup
+// Helper function to create composite image with elements and/or uploaded images overlaid on mockup
 async function createCompositeImage(
   mockupImage: string,
   elements: DesignElement[],
   slot: SlotKey,
-  customDefaults?: Record<SlotKey, BoundingBox>
+  customDefaults?: Record<SlotKey, BoundingBox>,
+  uploadedImage?: string
 ): Promise<string | null> {
-  if (elements.length === 0) return mockupImage;
+  if (elements.length === 0 && !uploadedImage) return mockupImage;
 
   return new Promise((resolve) => {
     // Add timeout to prevent hanging
@@ -288,6 +290,26 @@ async function createCompositeImage(
           ctx.restore();
         }
 
+        // Draw uploaded image if present (overlay on bounding box)
+        if (uploadedImage) {
+          const uploadedImg = document.createElement("img");
+          await new Promise<void>((resolveImg) => {
+            const imgTimeout = setTimeout(() => resolveImg(), 5000);
+            uploadedImg.onload = () => {
+              clearTimeout(imgTimeout);
+              // Draw uploaded image within the bounding box
+              ctx.drawImage(uploadedImg, boxX, boxY, boxWidth, boxHeight);
+              resolveImg();
+            };
+            uploadedImg.onerror = () => {
+              clearTimeout(imgTimeout);
+              resolveImg();
+            };
+            uploadedImg.crossOrigin = "anonymous";
+            uploadedImg.src = uploadedImage;
+          });
+        }
+
         handleComplete(canvas.toDataURL("image/png"));
       } catch (error) {
         console.error("Error creating composite image:", error);
@@ -487,15 +509,22 @@ export default function CustomizedDetailsModal({
         for (const slot of ["front", "back", "chest"] as SlotKey[]) {
           const mockup = mockupImages[slot];
           const elements = elementsBySlot[slot];
+          
+          // Check if this slot has an uploaded image
+          const locationWithUpload = customization?.printLocations?.find(
+            (loc) => loc.slot === slot && loc.uploadedImage
+          );
+          
           if (mockup) {
-            if (elements.length > 0) {
+            if (elements.length > 0 || locationWithUpload?.uploadedImage) {
               const composite = await createCompositeImage(
                 mockup,
                 elements,
                 slot,
                 product?.customDefaults as
                   | Record<SlotKey, BoundingBox>
-                  | undefined
+                  | undefined,
+                locationWithUpload?.uploadedImage
               );
               composites[slot] = composite;
             } else {
@@ -566,23 +595,45 @@ export default function CustomizedDetailsModal({
     return images;
   }, [customization]);
 
-  // Get slots that have customization
+  // Get slots that have customization (either elements or uploaded images)
   const customizedSlots = useMemo(() => {
-    const slots: SlotKey[] = [];
+    const slotsSet = new Set<SlotKey>();
+    
+    // Add slots with elements
     Object.entries(elementsBySlot).forEach(([slot, elements]) => {
       if (elements.length > 0) {
-        slots.push(slot as SlotKey);
+        slotsSet.add(slot as SlotKey);
       }
     });
-    return slots;
-  }, [elementsBySlot]);
+    
+    // Add slots with uploaded images (even if no elements)
+    if (customization?.printLocations) {
+      customization.printLocations.forEach((loc) => {
+        if (loc.slot && loc.uploadedImage) {
+          slotsSet.add(loc.slot as SlotKey);
+        }
+      });
+    }
+    
+    return Array.from(slotsSet);
+  }, [elementsBySlot, customization]);
 
   // Set initial selected slot
   useEffect(() => {
     if (customizedSlots.length > 0 && !selectedSlot) {
       setSelectedSlot(customizedSlots[0]);
+    } else if (customizedSlots.length === 0 && !selectedSlot) {
+      // If no customized slots found, check if there are any printLocations with uploaded images
+      if (customization?.printLocations && customization.printLocations.length > 0) {
+        const firstLocationWithImage = customization.printLocations.find(
+          (loc) => loc.slot && loc.uploadedImage
+        );
+        if (firstLocationWithImage?.slot) {
+          setSelectedSlot(firstLocationWithImage.slot as SlotKey);
+        }
+      }
     }
-  }, [customizedSlots, selectedSlot]);
+  }, [customizedSlots, selectedSlot, customization]);
 
   // Get details for selected slot only
   const selectedSlotTexts = useMemo(() => {
@@ -793,7 +844,7 @@ export default function CustomizedDetailsModal({
         </div>
 
         {/* Mockup Images - With Print Location header and dropdown */}
-        {customizedSlots.length > 0 && selectedSlot && (
+        {selectedSlot && (
           <div className="mb-6">
             {/* Print Location Header with Dropdown */}
             <div className="mb-4">
@@ -962,26 +1013,54 @@ export default function CustomizedDetailsModal({
                   {selectedSlotUploadedImages.map((image, index) => (
                     <div
                       key={index}
-                      className="relative w-16 h-16 rounded-lg overflow-hidden border border-neutral-200"
+                      className="relative group"
                     >
-                      <Image
-                        src={image}
-                        alt={`Uploaded image ${index + 1}`}
-                        fill
-                        className="object-contain"
-                      />
+                      <div className="relative w-16 h-16 rounded-lg overflow-hidden border border-neutral-200">
+                        <Image
+                          src={image}
+                          alt={`Uploaded image ${index + 1}`}
+                          fill
+                          className="object-contain"
+                        />
+                      </div>
+                      <button
+                        onClick={() => {
+                          // Download image
+                          const link = document.createElement('a');
+                          link.href = image;
+                          link.download = `customized-image-${index + 1}.png`;
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                        }}
+                        className="absolute -bottom-1 -right-1 bg-blue-600 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                        title="Download image"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                      </button>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* QR Code - Only show for selected slot, display content only */}
+            {/* QR Code - Only show for selected slot, display QR code and content */}
             {selectedSlotQRCodes.length > 0 && (
-              <div className="flex justify-between">
+              <div className="flex justify-between items-start">
                 <div className="text-sm text-neutral-700">QR Code</div>
-                <div className="text-sm text-neutral-600">
-                  {selectedSlotQRCodes.join(", ")}
+                <div className="flex flex-col gap-2 items-end">
+                  {selectedSlotQRCodes.map((qrValue, index) => (
+                    <div key={index} className="flex flex-col items-end gap-1">
+                      <div className="bg-white p-2 rounded border">
+                        <QRCodeSVG value={qrValue} size={64} />
+                      </div>
+                      <span className="text-xs text-neutral-500 max-w-[200px] truncate">
+                        {qrValue}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

@@ -118,10 +118,16 @@ function hasCustomizationOptions(product: ProductDoc): boolean {
 
 function ProductSectionCard({ product }: { product: ProductDoc }) {
   const img = getPrimaryImageForDoc(product);
-  const wishlistItems = useWishlistStore((state) => state.items);
+  // Subscribe to items to trigger re-renders when wishlist changes
+  useWishlistStore((state) => state.items);
+  const isWishlistedCheck = useWishlistStore((state) => state.isWishlisted);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const isWishlisted = isAuthenticated && wishlistItems.includes(product._id);
   const toggleWishlist = useWishlistStore((state) => state.toggleItem);
+  // Check if this specific color variant is wishlisted
+  const colorKey = product.colorKey && product.colorKey !== "Gold" && product.colorKey !== "default" 
+    ? product.colorKey 
+    : undefined;
+  const isWishlisted = isAuthenticated && isWishlistedCheck(product._id, colorKey);
   const getItemQuantity = useCartStore((state) => state.getItemQuantity);
   const addItem = useCartStore((state) => state.addItem);
   const removeItem = useCartStore((state) => state.removeItem);
@@ -139,7 +145,8 @@ function ProductSectionCard({ product }: { product: ProductDoc }) {
       return;
     }
     try {
-      await toggleWishlist(product._id, token, () => setShowAuthModal(true));
+      // Pass colorKey if product has color variants
+      await toggleWishlist(product._id, token, () => setShowAuthModal(true), colorKey);
     } catch (error) {
       console.error("Error toggling wishlist:", error);
     }
