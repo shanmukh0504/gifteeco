@@ -23,7 +23,7 @@
     "jsonwebtoken": "^9.0.0",
     "lucide-react": "^0.556.0",
     "mongoose": "^8.0.0",
-    "next": "15.3.1",
+    "next": "^15.5.7",
     "next-auth": "^4.24.0",
     "nodemailer": "^6.9.8",
     "qrcode": "^1.5.4",
@@ -48,7 +48,7 @@
     "@types/react-dom": "^19",
     "dotenv": "^17.2.3",
     "eslint": "^9",
-    "eslint-config-next": "15.3.1",
+    "eslint-config-next": "^15.5.7",
     "tailwindcss": "^4",
     "tsx": "^4.20.6",
     "typescript": "^5"
