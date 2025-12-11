@@ -1,32 +1,50 @@
 "use client";
 
-import Image from "next/image";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import useWishlistStore from "@/store/useWishlistStore";
+import Image from "next/image";
 import useCartStore from "@/store/useCartStore";
 import useAuthStore from "@/store/useAuthStore";
+import useWishlistStore from "@/store/useWishlistStore";
 import AuthModal from "@/components/auth/AuthModal";
+import ProductSectionSkeleton from "@/components/shared/ProductSectionSkeleton";
+import type { ProductDoc } from "./types";
 
-type ProductDoc = {
-  _id: string;
-  name: string;
-  price: number;
-  category?: { name: string };
-  noColor?: {
-    images?: string[];
-    customization?: Record<string, { mockupImage?: string }>;
-  };
-  colors?: Record<
-    string,
-    {
-      images?: string[];
-      customization?: Record<string, { mockupImage?: string }>;
+function getPrimaryImageForDoc(p: ProductDoc): string | undefined {
+  // If product has a specific colorKey, show that color's image
+  if (p.colorKey && p.colors && p.colors[p.colorKey]) {
+    return p.colors[p.colorKey].images?.[0];
+  }
+  // Otherwise, show first available color or noColor image
+  const colorEntries = p.colors ? Object.values(p.colors) : [];
+  const firstColor = colorEntries[0];
+  return firstColor?.images?.[0] ?? p.noColor?.images?.[0];
+}
+
+function hasCustomizationOptions(product: ProductDoc): boolean {
+  if (product.colors) {
+    for (const colorData of Object.values(product.colors)) {
+      const customization = colorData?.customization;
+      if (customization) {
+        const slots = ["front", "back", "chest"];
+        for (const slot of slots) {
+          if (customization[slot]?.mockupImage) {
+            return true;
+          }
+        }
+      }
     }
-  >;
-  minQuantity?: number;
-  colorKey?: string; // Added to track which color variant this is
-};
+  }
+  if (product.noColor?.customization) {
+    const slots = ["front", "back", "chest"];
+    for (const slot of slots) {
+      if (product.noColor.customization[slot]?.mockupImage) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 // Utility function to expand products by color
 function expandProductsByColor(products: ProductDoc[]): ProductDoc[] {
@@ -74,67 +92,18 @@ function expandProductsByColor(products: ProductDoc[]): ProductDoc[] {
   return expandedProducts;
 }
 
-type LandingPayload = {
-  tabs: Record<string, ProductDoc[]>;
-  sections: Record<string, ProductDoc[]>;
-};
-
-const tabs = [
-  { key: "all", label: "All" },
-  { key: "trending", label: "TRENDING" },
-  { key: "apparel", label: "APPAREL" },
-  { key: "featured", label: "FEATURED" },
-  { key: "combos", label: "COMBOS" },
-] as const;
-
-function getPrimaryImage(p: ProductDoc): string | undefined {
-  // If product has a specific colorKey, show that color's image
-  if (p.colorKey && p.colors && p.colors[p.colorKey]) {
-    return p.colors[p.colorKey].images?.[0];
-  }
-  // Otherwise, show first available color or noColor image
-  const colorEntries = p.colors ? Object.values(p.colors) : [];
-  const firstColor = colorEntries[0];
-  return firstColor?.images?.[0] ?? p.noColor?.images?.[0];
-}
-
-function hasCustomizationOptions(product: ProductDoc): boolean {
-  if (product.colors) {
-    for (const colorData of Object.values(product.colors)) {
-      const customization = colorData?.customization;
-      if (customization) {
-        const slots = ["front", "back", "chest"];
-        for (const slot of slots) {
-          if (customization[slot]?.mockupImage) {
-            return true;
-          }
-        }
-      }
-    }
-  }
-  if (product.noColor?.customization) {
-    const slots = ["front", "back", "chest"];
-    for (const slot of slots) {
-      if (product.noColor.customization[slot]?.mockupImage) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-function ProductCard({ product }: { product: ProductDoc }) {
-  const img = getPrimaryImage(product);
+function ProductSectionCard({ product }: { product: ProductDoc }) {
+  const img = getPrimaryImageForDoc(product);
   // Subscribe to items to trigger re-renders when wishlist changes
   useWishlistStore((state) => state.items);
   const isWishlistedCheck = useWishlistStore((state) => state.isWishlisted);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const toggleWishlist = useWishlistStore((state) => state.toggleItem);
   // Check if this specific color variant is wishlisted
   const colorKey = product.colorKey && product.colorKey !== "Gold" && product.colorKey !== "default" 
     ? product.colorKey 
     : undefined;
   const isWishlisted = isAuthenticated && isWishlistedCheck(product._id, colorKey);
+  const toggleWishlist = useWishlistStore((state) => state.toggleItem);
   const getItemQuantity = useCartStore((state) => state.getItemQuantity);
   const addItem = useCartStore((state) => state.addItem);
   const removeItem = useCartStore((state) => state.removeItem);
@@ -147,14 +116,15 @@ function ProductCard({ product }: { product: ProductDoc }) {
   const handleWishlistClick = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-
     if (!isAuthenticated || !token) {
       setShowAuthModal(true);
       return;
     }
-
     try {
       // Pass colorKey if product has color variants
+      const colorKey = product.colorKey && product.colorKey !== "Gold" && product.colorKey !== "default" 
+        ? product.colorKey 
+        : undefined;
       await toggleWishlist(product._id, token, () => setShowAuthModal(true), colorKey);
     } catch (error) {
       console.error("Error toggling wishlist:", error);
@@ -164,27 +134,20 @@ function ProductCard({ product }: { product: ProductDoc }) {
   const handleCartClick = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-
-    // If not authenticated, show auth modal
     if (!isAuthenticated || !token) {
       setShowAuthModal(true);
       return;
     }
-
-    // If product has customization options, redirect to product page
     if (hasCustomizationOptions(product)) {
       window.location.href = `/product/${product._id}`;
       return;
     }
-
     try {
       if (cartQuantity > 0) {
-        // Remove from cart
         await removeItem(product._id, undefined, undefined, token, () =>
           setShowAuthModal(true)
         );
       } else {
-        // Add to cart with minimum quantity
         await addItem(
           { productId: product._id, quantity: minQuantity },
           token,
@@ -230,9 +193,7 @@ function ProductCard({ product }: { product: ProductDoc }) {
             <button
               onClick={handleWishlistClick}
               className={`absolute right-2 top-2 z-10 rounded-lg bg-white/95 p-2 shadow-lg backdrop-blur-sm transition hover:bg-white ${
-                isWishlisted
-                  ? "opacity-100 shadow-pink-200"
-                  : "opacity-0 group-hover:opacity-100"
+                isWishlisted ? "shadow-pink-200" : ""
               }`}
               aria-label={
                 isWishlisted ? "Remove from wishlist" : "Add to wishlist"
@@ -262,7 +223,7 @@ function ProductCard({ product }: { product: ProductDoc }) {
               {product.name}
             </div>
             <div className="flex items-center justify-between">
-              <div className="text-sm text-neutral-900">
+              <div className="text-sm font-semibold text-neutral-900">
                 ₹{Math.round(product.price)}
               </div>
               <button
@@ -297,16 +258,24 @@ function ProductCard({ product }: { product: ProductDoc }) {
   );
 }
 
-function Row({ title, products }: { title: string; products: ProductDoc[] }) {
+function ProductSection({
+  title,
+  products,
+}: {
+  title: string;
+  products: ProductDoc[];
+}) {
   const [index, setIndex] = useState(0);
   const visible = 4;
   const maxIndex = Math.max(0, products.length - visible);
   const displayed = products.slice(index, index + visible);
 
+  if (products.length === 0) return null;
+
   return (
     <section className="mx-auto w-full max-w-6xl px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
-        <h2 className="text-2xl font-semibold text-[#4a154b]">{title}</h2>
+        <h3 className="text-xl font-semibold text-[#4a154b]">{title}</h3>
         <div className="flex gap-2">
           <button
             aria-label="previous"
@@ -315,7 +284,7 @@ function Row({ title, products }: { title: string; products: ProductDoc[] }) {
             className={`rounded-full p-2 transition ${
               index === 0
                 ? "bg-neutral-200 opacity-50 text-neutral-500"
-                : "bg-[var(--color-arrow)] text-black hover:bg-[var(--color-arrow-hover)] hover:text-white cursor-pointer"
+                : "bg-[var(--color-arrow)] text-black hover:bg-[var(--color-arrow-hover)] hover:text-white"
             }`}
           >
             <svg
@@ -338,7 +307,7 @@ function Row({ title, products }: { title: string; products: ProductDoc[] }) {
             aria-label="next"
             onClick={() => setIndex((i) => Math.min(maxIndex, i + 1))}
             disabled={index >= maxIndex}
-            className={`rounded-full p-2 transition cursor-pointer ${
+            className={`rounded-full p-2 transition ${
               index >= maxIndex
                 ? "bg-neutral-200 opacity-50 text-neutral-500"
                 : "bg-[var(--color-arrow)] text-black hover:bg-[var(--color-arrow-hover)] hover:text-white"
@@ -364,7 +333,7 @@ function Row({ title, products }: { title: string; products: ProductDoc[] }) {
       </div>
       <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
         {displayed.map((p) => (
-          <ProductCard
+          <ProductSectionCard
             key={`${p._id}-${p.colorKey || "default"}`}
             product={p}
           />
@@ -374,178 +343,111 @@ function Row({ title, products }: { title: string; products: ProductDoc[] }) {
   );
 }
 
-export default function ProductShowcase() {
-  const [data, setData] = useState<LandingPayload | null>(null);
+export default function ProductSections({ productId }: { productId: string }) {
+  const [data, setData] = useState<{
+    tabs?: {
+      combos?: ProductDoc[];
+      apparel?: ProductDoc[];
+      trending?: ProductDoc[];
+      featured?: ProductDoc[];
+    };
+    sections?: { welcomeKits?: ProductDoc[] };
+  } | null>(null);
+  const [similarProducts, setSimilarProducts] = useState<ProductDoc[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] =
-    useState<(typeof tabs)[number]["key"]>("all");
+  const [similarLoading, setSimilarLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
     fetch("/api/catalogue/landing")
       .then((r) => r.json())
       .then((j) => {
-        // Ensure the response has the expected structure
-        if (j && j.tabs && j.sections) {
-          setData(j);
-        } else {
-          // If error response, set empty structure
-          setData({
-            tabs: {
-              all: [],
-              trending: [],
-              apparel: [],
-              featured: [],
-              combos: [],
-            },
-            sections: {
-              bestSellers: [],
-              welcomeKits: [],
-            },
-          });
-        }
+        setData(j);
       })
       .catch(() => {
-        // On fetch error, set empty structure
-        setData({
-          tabs: {
-            all: [],
-            trending: [],
-            apparel: [],
-            featured: [],
-            combos: [],
-          },
-          sections: {
-            bestSellers: [],
-            welcomeKits: [],
-          },
-        });
+        setData(null);
       })
       .finally(() => {
         setLoading(false);
       });
   }, []);
 
-  const tabProducts = useMemo(() => {
-    if (!data || !data.tabs) return [];
-    const products = data.tabs[activeTab] ?? [];
-    return expandProductsByColor(products);
-  }, [data, activeTab]);
+  useEffect(() => {
+    if (!productId) {
+      setSimilarLoading(false);
+      return;
+    }
+
+    setSimilarLoading(true);
+    fetch(`/api/products/${productId}/similar`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.products && Array.isArray(j.products)) {
+          setSimilarProducts(expandProductsByColor(j.products));
+        } else {
+          setSimilarProducts([]);
+        }
+      })
+      .catch(() => {
+        setSimilarProducts([]);
+      })
+      .finally(() => {
+        setSimilarLoading(false);
+      });
+  }, [productId]);
 
   if (loading) {
     return (
-      <div>
-        <section className="mx-auto w-full max-w-6xl px-4 py-12">
-          <div className="mb-6 h-8 w-32 bg-neutral-200 rounded mx-auto animate-pulse" />
-          <div className="mb-8 flex justify-center gap-6">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div
-                key={i}
-                className="h-5 w-20 bg-neutral-200 rounded animate-pulse"
-              />
-            ))}
-          </div>
-          <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="group relative animate-pulse">
-                <div className="relative aspect-[4/5] w-full overflow-hidden rounded-2xl bg-neutral-200" />
-                <div className="mt-3 space-y-2">
-                  <div className="h-4 w-3/4 rounded bg-neutral-200" />
-                  <div className="flex items-center justify-between">
-                    <div className="h-4 w-16 rounded bg-neutral-200" />
-                    <div className="h-10 w-10 rounded-lg bg-neutral-200" />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-        {[1, 2].map((row) => (
-          <section key={row} className="mx-auto w-full max-w-6xl px-4 py-8">
-            <div className="mb-6 flex items-center justify-between">
-              <div className="h-6 w-32 bg-neutral-200 rounded animate-pulse" />
-              <div className="flex gap-2">
-                <div className="h-10 w-10 rounded-full bg-neutral-200 animate-pulse" />
-                <div className="h-10 w-10 rounded-full bg-neutral-200 animate-pulse" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="group relative animate-pulse">
-                  <div className="relative aspect-[4/5] w-full overflow-hidden rounded-2xl bg-neutral-200" />
-                  <div className="mt-3 space-y-2">
-                    <div className="h-4 w-3/4 rounded bg-neutral-200" />
-                    <div className="flex items-center justify-between">
-                      <div className="h-4 w-16 rounded bg-neutral-200" />
-                      <div className="h-10 w-10 rounded-lg bg-neutral-200" />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        ))}
-      </div>
+      <>
+        <ProductSectionSkeleton />
+        <ProductSectionSkeleton />
+        <ProductSectionSkeleton />
+        <ProductSectionSkeleton />
+        <ProductSectionSkeleton />
+      </>
     );
   }
 
-  if (!data || !data.tabs || !data.sections) return null;
-
   return (
-    <div>
-      <section className="mx-auto w-full max-w-6xl px-4 py-12">
-        <h2 className="mb-6 text-center text-2xl font-semibold text-[#4a154b] underline decoration-2 underline-offset-4">
-          Our Products
-        </h2>
-        <div className="mb-8 flex items-center justify-between">
-          <div className="flex gap-6 text-sm">
-          {tabs.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setActiveTab(t.key)}
-              className={`font-medium transition cursor-pointer ${
-                activeTab === t.key
-                  ? "text-neutral-900 underline decoration-2 underline-offset-4"
-                  : "text-neutral-600 hover:text-neutral-900"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-          </div>
-          <Link
-            href="/products"
-            className="text-sm font-medium text-neutral-900 hover:text-neutral-600 transition"
-          >
-            <div className="flex items-center gap-2 underline decoration-2 underline-offset-4">
-            EXPLORE ALL
-            <Image
-              src="/right.svg"
-              alt="arrow right"
-              width={16}
-              height={16}
-            />
-            </div>
-          </Link>
-        </div>
-        <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
-          {tabProducts.slice(0, 4).map((p) => (
-            <ProductCard
-              key={`${p._id}-${p.colorKey || "default"}`}
-              product={p}
-            />
-          ))}
-        </div>
-      </section>
-
-      <Row
-        title="BestSellers"
-        products={expandProductsByColor(data.sections.bestSellers || [])}
-      />
-      <Row
-        title="Welcome Kits"
-        products={expandProductsByColor(data.sections.welcomeKits || [])}
-      />
-    </div>
+    <>
+      {similarLoading ? (
+        <ProductSectionSkeleton />
+      ) : (
+        similarProducts.length > 0 && (
+          <ProductSection title="Similar Products" products={similarProducts} />
+        )
+      )}
+      {data?.sections?.welcomeKits && data.sections.welcomeKits.length > 0 && (
+        <ProductSection
+          title="Welcome Kits"
+          products={expandProductsByColor(data.sections.welcomeKits)}
+        />
+      )}
+      {data?.tabs?.combos && data.tabs.combos.length > 0 && (
+        <ProductSection
+          title="Combos"
+          products={expandProductsByColor(data.tabs.combos)}
+        />
+      )}
+      {data?.tabs?.apparel && data.tabs.apparel.length > 0 && (
+        <ProductSection
+          title="Apparel"
+          products={expandProductsByColor(data.tabs.apparel)}
+        />
+      )}
+      {data?.tabs?.trending && data.tabs.trending.length > 0 && (
+        <ProductSection
+          title="Trending"
+          products={expandProductsByColor(data.tabs.trending)}
+        />
+      )}
+      {data?.tabs?.featured && data.tabs.featured.length > 0 && (
+        <ProductSection
+          title="Featured"
+          products={expandProductsByColor(data.tabs.featured)}
+        />
+      )}
+    </>
   );
 }
+

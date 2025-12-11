@@ -501,8 +501,15 @@ const useCartStore = create<CartState>()(
             return i.cartItemId === cartItemId;
           }
           
-          // Otherwise, match by customization
-          return areCustomizationsEqual(i.customization, customization);
+          // If customization is provided, match by customization
+          if (customization) {
+            return areCustomizationsEqual(i.customization, customization);
+          }
+          
+          // For non-customized products, check if item has no customization
+          const hasNoCustomization = !i.customization || 
+            (typeof i.customization === 'object' && Object.keys(i.customization).length === 0);
+          return hasNoCustomization;
         });
 
         if (!itemToUpdate) {
@@ -518,12 +525,20 @@ const useCartStore = create<CartState>()(
           
           if (!matchesBasic) return false;
           
-          // Match by cartItemId if available, otherwise by customization
+          // Match by cartItemId if available
           if (cartItemId && i.cartItemId) {
             return i.cartItemId === cartItemId;
           }
           
-          return areCustomizationsEqual(i.customization, customization);
+          // If customization is provided, match by customization
+          if (customization) {
+            return areCustomizationsEqual(i.customization, customization);
+          }
+          
+          // For non-customized products, check if item has no customization
+          const hasNoCustomization = !i.customization || 
+            (typeof i.customization === 'object' && Object.keys(i.customization).length === 0);
+          return hasNoCustomization;
         });
 
         // Remove the old item
@@ -533,13 +548,23 @@ const useCartStore = create<CartState>()(
             return i.cartItemId !== cartItemId;
           }
           
-          // Otherwise match by productId, size, color, and customization
-          return !(
+          // Match by productId, size, and color
+          const matchesBasic = 
             i.productId === productId &&
             i.size === oldSize &&
-            i.color === color &&
-            areCustomizationsEqual(i.customization, customization)
-          );
+            i.color === color;
+          
+          if (!matchesBasic) return true;
+          
+          // If customization is provided, match by customization
+          if (customization) {
+            return !areCustomizationsEqual(i.customization, customization);
+          }
+          
+          // For non-customized products, check if item has no customization
+          const hasNoCustomization = !i.customization || 
+            (typeof i.customization === 'object' && Object.keys(i.customization).length === 0);
+          return !hasNoCustomization;
         });
 
         // If there's an existing item with the new size and same customization, merge quantities
@@ -575,13 +600,23 @@ const useCartStore = create<CartState>()(
                   : i;
               }
               
-              if (
+              const matchesBasic = 
                 i.productId === productId &&
                 i.size === newSize &&
-                i.color === color &&
-                areCustomizationsEqual(i.customization, customization)
-              ) {
-                return { ...i, quantity: mergedQuantity };
+                i.color === color;
+              
+              if (matchesBasic) {
+                if (customization) {
+                  if (areCustomizationsEqual(i.customization, customization)) {
+                    return { ...i, quantity: mergedQuantity };
+                  }
+                } else {
+                  const hasNoCustomization = !i.customization || 
+                    (typeof i.customization === 'object' && Object.keys(i.customization).length === 0);
+                  if (hasNoCustomization) {
+                    return { ...i, quantity: mergedQuantity };
+                  }
+                }
               }
               return i;
             })
@@ -590,12 +625,20 @@ const useCartStore = create<CartState>()(
                 return i.cartItemId !== cartItemId || i.size === newSize;
               }
               
-              return !(
+              const matchesBasic = 
                 i.productId === productId &&
                 i.size === oldSize &&
-                i.color === color &&
-                areCustomizationsEqual(i.customization, customization)
-              );
+                i.color === color;
+              
+              if (!matchesBasic) return true;
+              
+              if (customization) {
+                return !areCustomizationsEqual(i.customization, customization);
+              }
+              
+              const hasNoCustomization = !i.customization || 
+                (typeof i.customization === 'object' && Object.keys(i.customization).length === 0);
+              return !hasNoCustomization;
             });
           set({ itemsWithDetails: newItemsWithDetails });
         } else {
@@ -616,12 +659,20 @@ const useCartStore = create<CartState>()(
               return i.cartItemId === cartItemId;
             }
             
-            return (
+            const matchesBasic = 
               i.productId === productId &&
               i.size === oldSize &&
-              i.color === color &&
-              areCustomizationsEqual(i.customization, customization)
-            );
+              i.color === color;
+            
+            if (!matchesBasic) return false;
+            
+            if (customization) {
+              return areCustomizationsEqual(i.customization, customization);
+            }
+            
+            const hasNoCustomization = !i.customization || 
+              (typeof i.customization === 'object' && Object.keys(i.customization).length === 0);
+            return hasNoCustomization;
           });
           
           const newItemsWithDetails = currentItemsWithDetails
@@ -630,12 +681,20 @@ const useCartStore = create<CartState>()(
                 return i.cartItemId !== cartItemId;
               }
               
-              return !(
+              const matchesBasic = 
                 i.productId === productId &&
                 i.size === oldSize &&
-                i.color === color &&
-                areCustomizationsEqual(i.customization, customization)
-              );
+                i.color === color;
+              
+              if (!matchesBasic) return true;
+              
+              if (customization) {
+                return !areCustomizationsEqual(i.customization, customization);
+              }
+              
+              const hasNoCustomization = !i.customization || 
+                (typeof i.customization === 'object' && Object.keys(i.customization).length === 0);
+              return !hasNoCustomization;
             })
             .concat(
               itemWithDetailsToUpdate
@@ -650,11 +709,7 @@ const useCartStore = create<CartState>()(
           try {
             // Use PATCH endpoint to update size - this allows us to pass customization in request body
             // instead of URL params, avoiding URL length limitations
-            if (!customization) {
-              console.error("Cannot update size: customization is required to identify the specific item");
-              throw new Error("Customization is required to update item size");
-            }
-
+            // For non-customized products, we can still update size using cartItemId or basic matching
             const patchResponse = await fetch("/api/cart", {
               method: "PATCH",
               headers: {
@@ -666,7 +721,7 @@ const useCartStore = create<CartState>()(
                 oldSize,
                 newSize,
                 color,
-                customization,
+                customization: customization || undefined, // Allow undefined for non-customized products
                 cartItemId,
               }),
             });

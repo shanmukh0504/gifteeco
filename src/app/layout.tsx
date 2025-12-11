@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import { Poppins, DM_Sans } from "next/font/google";
+import { Suspense } from "react";
 import "./globals.css";
 import { Toaster } from "sonner";
 import Navbar from "@/components/landing/Navbar";
 import Footer from "@/components/landing/Footer";
 import CartLoadingOverlay from "@/components/cart/CartLoadingOverlay";
 import CartStorageErrorHandler from "@/components/cart/CartStorageErrorHandler";
+import ScrollToTop from "@/components/shared/ScrollToTop";
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -35,6 +37,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${poppins.variable} ${dmSans.variable}`}>
       <body className={`${poppins.className} antialiased`}>
+        <Suspense fallback={null}>
+          <ScrollToTop />
+        </Suspense>
         <Navbar />
         {children}
         <Footer />

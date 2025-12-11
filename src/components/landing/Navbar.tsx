@@ -53,7 +53,7 @@ function CartCountBadge() {
 export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
-  const { isAuthenticated, logout: authLogout } = useAuthStore();
+  const { isAuthenticated, logout: authLogout, user } = useAuthStore();
   const clearWishlist = useWishlistStore((state) => state.clearWishlist);
   const clearCart = useCartStore((state) => state.clearCart);
 
@@ -110,11 +110,14 @@ export default function Navbar() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [showBulkDropdown, setShowBulkDropdown] = useState(false);
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const bulkDropdownRef = useRef<HTMLDivElement>(null);
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const bulkTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const profileTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
@@ -194,6 +197,13 @@ export default function Navbar() {
       }
 
       if (
+        profileDropdownRef.current &&
+        !profileDropdownRef.current.contains(target)
+      ) {
+        setShowProfileDropdown(false);
+      }
+
+      if (
         searchContainerRef.current &&
         !searchContainerRef.current.contains(target)
       ) {
@@ -239,6 +249,9 @@ export default function Navbar() {
       }
       if (bulkTimeoutRef.current) {
         clearTimeout(bulkTimeoutRef.current);
+      }
+      if (profileTimeoutRef.current) {
+        clearTimeout(profileTimeoutRef.current);
       }
     };
   }, []);
@@ -615,13 +628,149 @@ export default function Navbar() {
             </div>
 
             {isAuthenticated ? (
-              <>
+              <div
+                ref={profileDropdownRef}
+                className="relative"
+                onMouseEnter={() => {
+                  if (profileTimeoutRef.current) {
+                    clearTimeout(profileTimeoutRef.current);
+                    profileTimeoutRef.current = null;
+                  }
+                  setShowProfileDropdown(true);
+                }}
+                onMouseLeave={() => {
+                  profileTimeoutRef.current = setTimeout(() => {
+                    setShowProfileDropdown(false);
+                  }, 150);
+                }}
+              >
                 <button
-                  onClick={handleLogout}
-                  className="rounded-xl bg-red-500 px-6 py-2 text-white shadow-md shadow-red-500/20 transition hover:bg-red-600"
+                  className="p-2 rounded-lg hover:bg-neutral-100 flex-shrink-0 relative"
+                  onMouseEnter={() => {
+                    if (profileTimeoutRef.current) {
+                      clearTimeout(profileTimeoutRef.current);
+                      profileTimeoutRef.current = null;
+                    }
+                    setShowProfileDropdown(true);
+                  }}
                 >
-                  Logout
+                  <svg
+                    className="w-6 h-6 text-neutral-700"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                    />
+                  </svg>
                 </button>
+
+                {showProfileDropdown && (
+                  <div
+                    className="absolute top-full right-0 mt-2 bg-white rounded-lg shadow-lg border border-neutral-200 py-2 z-50 min-w-[240px]"
+                    onMouseEnter={() => {
+                      if (profileTimeoutRef.current) {
+                        clearTimeout(profileTimeoutRef.current);
+                        profileTimeoutRef.current = null;
+                      }
+                      setShowProfileDropdown(true);
+                    }}
+                    onMouseLeave={() => {
+                      profileTimeoutRef.current = setTimeout(() => {
+                        setShowProfileDropdown(false);
+                      }, 150);
+                    }}
+                  >
+                    <div className="px-4 py-3 border-b border-neutral-200">
+                      <p className="font-semibold text-neutral-900">
+                        Hello {user?.name || "User"}
+                      </p>
+                      <p className="text-sm text-neutral-600 mt-1">
+                        {user?.email}
+                      </p>
+                    </div>
+
+                    <Link
+                      href="/my-profile"
+                      onClick={() => setShowProfileDropdown(false)}
+                      className="block px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 hover:text-[#CF6144] transition-colors font-medium"
+                    >
+                      My Profile
+                    </Link>
+
+                    <div className="border-t border-neutral-200 my-1"></div>
+
+                    <Link
+                      href="/orders"
+                      onClick={() => setShowProfileDropdown(false)}
+                      className="block px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 hover:text-[#CF6144] transition-colors"
+                    >
+                      Orders
+                    </Link>
+                    <Link
+                      href="/wishlist"
+                      onClick={() => setShowProfileDropdown(false)}
+                      className="block px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 hover:text-[#CF6144] transition-colors"
+                    >
+                      Wishlist
+                    </Link>
+                    <Link
+                      href="/contact"
+                      onClick={() => setShowProfileDropdown(false)}
+                      className="block px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 hover:text-[#CF6144] transition-colors"
+                    >
+                      Contact Us
+                    </Link>
+                    <Link
+                      href="/addresses"
+                      onClick={() => setShowProfileDropdown(false)}
+                      className="block px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 hover:text-[#CF6144] transition-colors"
+                    >
+                      Saved Addresses
+                    </Link>
+
+                    <div className="border-t border-neutral-200 my-1"></div>
+
+                    <Link
+                      href="/terms"
+                      onClick={() => setShowProfileDropdown(false)}
+                      className="block px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 hover:text-[#CF6144] transition-colors"
+                    >
+                      Terms & Conditions
+                    </Link>
+                    <Link
+                      href="/privacy"
+                      onClick={() => setShowProfileDropdown(false)}
+                      className="block px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 hover:text-[#CF6144] transition-colors"
+                    >
+                      Privacy Policy
+                    </Link>
+
+                    <div className="border-t border-neutral-200 my-1"></div>
+
+                    <Link
+                      href="/profile"
+                      onClick={() => setShowProfileDropdown(false)}
+                      className="block px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 hover:text-[#CF6144] transition-colors"
+                    >
+                      Edit Profile
+                    </Link>
+                    <button
+                      onClick={() => {
+                        setShowProfileDropdown(false);
+                        handleLogout();
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 hover:text-red-600 transition-colors"
+                    >
+                      Logout
+                    </button>
+                  </div>
+                )}
+
                 <Modal
                   isOpen={showLogoutModal}
                   onClose={() => setShowLogoutModal(false)}
@@ -648,7 +797,7 @@ export default function Navbar() {
                     </div>
                   </div>
                 </Modal>
-              </>
+              </div>
             ) : (
               <>
                 <Link

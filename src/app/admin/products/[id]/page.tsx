@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import useAuthStore from "@/store/useAuthStore";
 import { toast } from "sonner";
 import ImageUpload from "@/components/admin/ImageUpload";
-import SingleImageUpload from "@/components/admin/SingleImageUpload";
+import MockupImageWithBoundingBox from "@/components/admin/MockupImageWithBoundingBox";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
@@ -354,20 +354,12 @@ export default function EditProductPage({
     updateVariantSlot(variantIndex, slot, { mockupImage: url });
   };
 
-  const handleBoxValueChange = (
-    slot: SlotKey,
-    field: keyof BoundingBox,
-    value: number
-  ) => {
-    const clamped = Math.max(0, Math.min(1, value));
+  const handleBoundingBoxChange = (slot: SlotKey, box: BoundingBox) => {
     setProductData((prev) => ({
       ...prev,
       customDefaults: {
         ...prev.customDefaults,
-        [slot]: {
-          ...prev.customDefaults[slot],
-          [field]: clamped,
-        },
+        [slot]: box,
       },
     }));
   };
@@ -799,59 +791,6 @@ export default function EditProductPage({
           />
 
           <div className="space-y-4 rounded-2xl border border-neutral-200 p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold text-neutral-800">
-                Custom Bounding Boxes
-              </p>
-              <p className="text-xs text-neutral-500">
-                Values are ratios (0 – 1) relative to the mockup image.
-              </p>
-            </div>
-            {SLOT_KEYS.map((slot) => (
-              <div
-                key={slot}
-                className="space-y-3 rounded-xl border border-neutral-100 p-3"
-              >
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold">{SLOT_LABELS[slot]}</p>
-                  <p className="text-xs text-neutral-500">
-                    Default: {DEFAULT_BOUNDING_BOXES[slot].x.toFixed(2)},{" "}
-                    {DEFAULT_BOUNDING_BOXES[slot].y.toFixed(2)} /{" "}
-                    {DEFAULT_BOUNDING_BOXES[slot].width.toFixed(2)} ×{" "}
-                    {DEFAULT_BOUNDING_BOXES[slot].height.toFixed(2)}
-                  </p>
-                </div>
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                  {(["x", "y", "width", "height"] as (keyof BoundingBox)[]).map(
-                    (field) => (
-                      <div key={field}>
-                        <label className="text-xs font-medium text-neutral-600">
-                          {field.toUpperCase()}
-                        </label>
-                        <input
-                          type="number"
-                          min={0}
-                          max={1}
-                          step={0.01}
-                          value={productData.customDefaults[slot][field]}
-                          onChange={(e) =>
-                            handleBoxValueChange(
-                              slot,
-                              field,
-                              parseFloat(e.target.value) || 0
-                            )
-                          }
-                          className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-brand focus:ring-brand"
-                        />
-                      </div>
-                    )
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="space-y-4 rounded-2xl border border-neutral-200 p-4">
             <label className="flex items-center gap-3 text-sm font-medium text-neutral-700">
               <input
                 type="checkbox"
@@ -869,7 +808,7 @@ export default function EditProductPage({
                 }
                 className="h-4 w-4 rounded border-neutral-300 text-brand focus:ring-brand"
               />
-              This product has color variants
+              Add colors and customise options
             </label>
 
             {productData.hasColorOptions ? (
@@ -977,11 +916,16 @@ export default function EditProductPage({
 
                             {slotData.enabled && (
                               <div className="space-y-3">
-                                <SingleImageUpload
+                                <MockupImageWithBoundingBox
                                   label="Mockup image"
+                                  slot={slot}
                                   image={slotData.mockupImage}
-                                  onChange={(url) =>
+                                  boundingBox={productData.customDefaults[slot]}
+                                  onImageChange={(url) =>
                                     handleMockupChange(index, slot, url)
+                                  }
+                                  onBoundingBoxChange={(box) =>
+                                    handleBoundingBoxChange(slot, box)
                                   }
                                 />
                                 <div className="grid gap-3 md:grid-cols-3">
