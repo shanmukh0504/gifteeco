@@ -11,6 +11,7 @@ interface ElementRendererProps {
   isResizing: boolean;
   isRotating: boolean;
   onMouseDown: (e: React.MouseEvent) => void;
+  onTouchStart?: (e: React.TouchEvent) => void;
   onResize: (e: React.MouseEvent, direction: string) => void;
   onRotate: (e: React.MouseEvent) => void;
   onDelete: () => void;
@@ -23,6 +24,7 @@ export default function ElementRenderer({
   isResizing,
   isRotating,
   onMouseDown,
+  onTouchStart,
   onResize,
   onRotate,
   onDelete,
@@ -44,9 +46,7 @@ export default function ElementRenderer({
         : "pointer",
     userSelect: "none",
     pointerEvents:
-      isSelected && (isDragging || isResizing || isRotating)
-        ? "none"
-        : "auto",
+      isSelected && (isDragging || isResizing || isRotating) ? "none" : "auto",
   };
 
   let content: React.ReactNode = null;
@@ -138,6 +138,8 @@ export default function ElementRenderer({
       data-element-container
       style={style}
       onMouseDown={onMouseDown}
+      onTouchStart={onTouchStart}
+      className="touch-manipulation"
     >
       {content}
       {isSelected && (
@@ -151,10 +153,10 @@ export default function ElementRenderer({
             }}
           />
 
-          {/* Rotation handle - above the box */}
+          {/* Rotation handle - above the box - hidden on mobile */}
           <div
             data-rotate-handle
-            className="absolute -top-8 left-1/2 transform -translate-x-1/2 w-6 h-6 bg-black rounded-full cursor-grab active:cursor-grabbing flex items-center justify-center z-20"
+            className="hidden md:flex absolute -top-8 left-1/2 transform -translate-x-1/2 w-6 h-6 bg-black rounded-full cursor-grab active:cursor-grabbing items-center justify-center z-20"
             onMouseDown={(e) => {
               e.stopPropagation();
               e.preventDefault();
@@ -178,52 +180,52 @@ export default function ElementRenderer({
             </svg>
           </div>
 
-          {/* Resize handles - all 8 corners and edges */}
+          {/* Resize handles - all 8 corners and edges - hidden on mobile */}
           {/* Corners */}
           <div
             data-control-handle
-            className="absolute -bottom-1 -right-1 w-3 h-3 bg-black border border-white rounded-full cursor-se-resize z-10"
+            className="hidden md:block absolute -bottom-1 -right-1 w-3 h-3 bg-black border border-white rounded-full cursor-se-resize z-10"
             onMouseDown={(e) => onResize(e, "se")}
           />
           <div
             data-control-handle
-            className="absolute -bottom-1 -left-1 w-3 h-3 bg-black border border-white rounded-full cursor-sw-resize z-10"
+            className="hidden md:block absolute -bottom-1 -left-1 w-3 h-3 bg-black border border-white rounded-full cursor-sw-resize z-10"
             onMouseDown={(e) => onResize(e, "sw")}
           />
           <div
             data-control-handle
-            className="absolute -top-1 -right-1 w-3 h-3 bg-black border border-white rounded-full cursor-ne-resize z-10"
+            className="hidden md:block absolute -top-1 -right-1 w-3 h-3 bg-black border border-white rounded-full cursor-ne-resize z-10"
             onMouseDown={(e) => onResize(e, "ne")}
           />
           <div
             data-control-handle
-            className="absolute -top-1 -left-1 w-3 h-3 bg-black border border-white rounded-full cursor-nw-resize z-10"
+            className="hidden md:block absolute -top-1 -left-1 w-3 h-3 bg-black border border-white rounded-full cursor-nw-resize z-10"
             onMouseDown={(e) => onResize(e, "nw")}
           />
 
           {/* Edges */}
           <div
             data-control-handle
-            className="absolute -top-1 left-1/2 transform -translate-x-1/2 w-3 h-3 bg-black border border-white rounded-full cursor-n-resize z-10"
+            className="hidden md:block absolute -top-1 left-1/2 transform -translate-x-1/2 w-3 h-3 bg-black border border-white rounded-full cursor-n-resize z-10"
             onMouseDown={(e) => onResize(e, "n")}
           />
           <div
             data-control-handle
-            className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-3 h-3 bg-black border border-white rounded-full cursor-s-resize z-10"
+            className="hidden md:block absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-3 h-3 bg-black border border-white rounded-full cursor-s-resize z-10"
             onMouseDown={(e) => onResize(e, "s")}
           />
           <div
             data-control-handle
-            className="absolute -left-1 top-1/2 transform -translate-y-1/2 w-3 h-3 bg-black border border-white rounded-full cursor-w-resize z-10"
+            className="hidden md:block absolute -left-1 top-1/2 transform -translate-y-1/2 w-3 h-3 bg-black border border-white rounded-full cursor-w-resize z-10"
             onMouseDown={(e) => onResize(e, "w")}
           />
           <div
             data-control-handle
-            className="absolute -right-1 top-1/2 transform -translate-y-1/2 w-3 h-3 bg-black border border-white rounded-full cursor-e-resize z-10"
+            className="hidden md:block absolute -right-1 top-1/2 transform -translate-y-1/2 w-3 h-3 bg-black border border-white rounded-full cursor-e-resize z-10"
             onMouseDown={(e) => onResize(e, "e")}
           />
 
-          {/* Delete button - top right */}
+          {/* Delete button - top right - hidden on mobile */}
           <button
             data-delete-button
             onClick={(e) => {
@@ -235,8 +237,9 @@ export default function ElementRenderer({
               e.stopPropagation();
               e.preventDefault();
             }}
-            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm hover:bg-red-600 z-30 shadow-lg"
+            className="hidden md:flex absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 items-center justify-center text-sm hover:bg-red-600 z-30 shadow-lg"
             style={{ pointerEvents: "auto" }}
+            aria-label="Delete element"
           >
             ×
           </button>
@@ -245,4 +248,3 @@ export default function ElementRenderer({
     </div>
   );
 }
-

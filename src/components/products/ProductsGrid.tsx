@@ -87,10 +87,14 @@ function ProductCard({ product }: { product: Product }) {
   const isWishlistedCheck = useWishlistStore((state) => state.isWishlisted);
   const toggleWishlist = useWishlistStore((state) => state.toggleItem);
   // Check if this specific color variant is wishlisted
-  const colorKey = product.colorKey && product.colorKey !== "Gold" && product.colorKey !== "default" 
-    ? product.colorKey 
-    : undefined;
-  const isWishlisted = isAuthenticated && isWishlistedCheck(product._id, colorKey);
+  const colorKey =
+    product.colorKey &&
+    product.colorKey !== "Gold" &&
+    product.colorKey !== "default"
+      ? product.colorKey
+      : undefined;
+  const isWishlisted =
+    isAuthenticated && isWishlistedCheck(product._id, colorKey);
   const getItemQuantity = useCartStore((state) => state.getItemQuantity);
   const addItem = useCartStore((state) => state.addItem);
   const removeItem = useCartStore((state) => state.removeItem);
@@ -114,7 +118,12 @@ function ProductCard({ product }: { product: Product }) {
 
     try {
       // Pass colorKey if product has color variants
-      await toggleWishlist(product._id, token, () => setShowAuthModal(true), colorKey);
+      await toggleWishlist(
+        product._id,
+        token,
+        () => setShowAuthModal(true),
+        colorKey
+      );
     } catch (error) {
       console.error("Error toggling wishlist:", error);
     }
@@ -274,7 +283,7 @@ const ProductsGrid = memo(function ProductsGrid({
 }: ProductsGridProps) {
   if (loading) {
     return (
-      <div className="grid grid-cols-2 gap-6 md:grid-cols-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:gap-6 md:grid-cols-3 lg:grid-cols-4">
         {Array.from({ length: 8 }).map((_, i) => (
           <ProductCardSkeleton key={i} />
         ))}
@@ -284,11 +293,13 @@ const ProductsGrid = memo(function ProductsGrid({
 
   if (products.length === 0) {
     return (
-      <div className="text-center py-16">
-        <p className="text-neutral-500 text-lg">No products found</p>
+      <div className="text-center py-8 sm:py-12 md:py-16">
+        <p className="text-neutral-500 text-base sm:text-lg">
+          No products found
+        </p>
         <Link
           href="/products"
-          className="mt-4 inline-block text-[#FF9AA2] hover:underline"
+          className="mt-4 inline-block text-[#FF9AA2] hover:underline text-sm sm:text-base"
         >
           Browse all products
         </Link>
@@ -297,7 +308,7 @@ const ProductsGrid = memo(function ProductsGrid({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-6 md:grid-cols-3 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 sm:gap-4 md:gap-6 md:grid-cols-3 lg:grid-cols-4">
       {products.map((product) => (
         <ProductCard
           key={`${product._id}-${product.colorKey || "default"}`}

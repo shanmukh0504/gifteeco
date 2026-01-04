@@ -35,10 +35,10 @@ export default function AboutSection() {
       <div
         className="absolute rounded-full"
         style={{
-          width: "clamp(300px, 40vw, 662px)",
-          height: "clamp(300px, 40vw, 662px)",
-          left: "-12vw",
-          top: "clamp(200px, 30vh, 379px)",
+          width: "clamp(200px, 40vw, 662px)",
+          height: "clamp(200px, 40vw, 662px)",
+          left: "-15vw",
+          top: "clamp(150px, 25vh, 379px)",
           backgroundColor: "#EBC7BA",
         }}
       />
@@ -60,12 +60,11 @@ export default function AboutSection() {
       </div>
 
       <div
-        className="absolute rounded-full"
+        className="absolute rounded-full top-[350px] md:top-[-58vh]"
         style={{
-          width: "clamp(350px, 45vw, 750px)",
-          height: "clamp(350px, 45vw, 750px)",
-          right: "-16vw",
-          top: "-58vh",
+          width: "clamp(250px, 45vw, 750px)",
+          height: "clamp(250px, 45vw, 750px)",
+          right: "-20vw",
           backgroundColor: "#EBC7BA",
         }}
       />
@@ -88,18 +87,18 @@ export default function AboutSection() {
 
       <div className="relative z-10 mx-auto w-full max-w-[1536px] px-4 md:px-6">
         {/* Header */}
-        <div className="mb-12 md:mb-16 text-center">
-          <h2 className="text-[42px] font-semibold text-neutral-800 capitalize leading-[110%] font-dm-sans">
+        <div className="mb-8 sm:mb-12 md:mb-16 text-center">
+          <h2 className="text-2xl sm:text-3xl md:text-[42px] font-semibold text-neutral-800 capitalize leading-[110%] font-dm-sans">
             Why Choose <span style={{ color: "#CF6144" }}>GifteeCo?</span>
           </h2>
         </div>
 
-        <div className="mb-12 md:mb-16 grid gap-8 lg:gap-12 lg:grid-cols-2 lg:items-center">
-          <div className="relative space-y-4 md:space-y-5">
-            <h3 className="relative z-10 text-[40px] font-semibold text-[#1D1D1D] leading-[150%] font-dm-sans">
+        <div className="mb-8 sm:mb-12 md:mb-16 grid gap-6 sm:gap-8 lg:gap-12 lg:grid-cols-2 lg:items-center">
+          <div className="relative space-y-3 sm:space-y-4 md:space-y-5">
+            <h3 className="relative z-10 text-2xl sm:text-3xl md:text-[40px] font-semibold text-[#1D1D1D] leading-[130%] sm:leading-[150%] font-dm-sans">
               Thoughtful Gifting That Builds Stronger Connections
             </h3>
-            <p className="relative z-10 text-[20px] font-medium text-[#848383] leading-[150%] font-satoshi border-t pt-4">
+            <p className="relative z-10 text-sm sm:text-base md:text-[20px] font-medium text-[#848383] leading-[150%] font-satoshi border-t pt-3 sm:pt-4">
               At GifTeeCo, every gift is designed to make people feel valued.
               From premium products to curated onboarding kits, we blend
               quality, personalization, and care to help companies celebrate
@@ -108,7 +107,7 @@ export default function AboutSection() {
           </div>
 
           {/* Right Side - shape.svg container with polygon image, star2, and spring */}
-          <div className="relative flex justify-center lg:justify-end">
+          <div className="relative hidden lg:flex justify-center lg:justify-end">
             {/* Container for shape.svg and all elements attached to it - rotated */}
             <div
               className="relative w-full max-w-[500px] aspect-[5/6]"
@@ -208,34 +207,34 @@ export default function AboutSection() {
               {features.slice(0, 2).map((feature, index) => (
                 <div
                   key={index}
-                  className="rounded-2xl border border-neutral-200 bg-white p-6 md:p-8"
+                  className="rounded-xl sm:rounded-2xl border border-neutral-200 bg-white p-4 sm:p-6 md:p-8"
                   style={{
                     boxShadow: "4px 4px 0px rgba(187, 128, 79, 0.5)",
                   }}
                 >
-                  <h4 className="mb-3 text-xl font-bold text-neutral-800">
+                  <h4 className="mb-2 sm:mb-3 text-lg sm:text-xl font-bold text-neutral-800">
                     {feature.title}
                   </h4>
-                  <p className="text-base leading-6 text-neutral-700">
+                  <p className="text-sm sm:text-base leading-6 text-neutral-700">
                     {feature.description}
                   </p>
                 </div>
               ))}
             </div>
             {/* Mobile: single column */}
-            <div className="grid gap-6 md:hidden">
+            <div className="grid gap-4 sm:gap-6 md:hidden">
               {features.slice(0, 2).map((feature, index) => (
                 <div
                   key={index}
-                  className="rounded-2xl border border-neutral-200 bg-white p-6 md:p-8"
+                  className="rounded-xl sm:rounded-2xl border border-neutral-200 bg-white p-4 sm:p-6"
                   style={{
                     boxShadow: "4px 4px 0px rgba(187, 128, 79, 0.5)",
                   }}
                 >
-                  <h4 className="mb-3 text-xl font-bold text-neutral-800">
+                  <h4 className="mb-2 sm:mb-3 text-lg sm:text-xl font-bold text-neutral-800">
                     {feature.title}
                   </h4>
-                  <p className="text-base leading-6 text-neutral-700">
+                  <p className="text-sm sm:text-base leading-6 text-neutral-700">
                     {feature.description}
                   </p>
                 </div>
@@ -258,34 +257,34 @@ export default function AboutSection() {
               {features.slice(2, 4).map((feature, index) => (
                 <div
                   key={index + 2}
-                  className="rounded-2xl border border-neutral-200 bg-white p-6 md:p-8"
+                  className="rounded-xl sm:rounded-2xl border border-neutral-200 bg-white p-4 sm:p-6 md:p-8"
                   style={{
                     boxShadow: "4px 4px 0px rgba(187, 128, 79, 0.5)",
                   }}
                 >
-                  <h4 className="mb-3 text-xl font-bold text-neutral-800">
+                  <h4 className="mb-2 sm:mb-3 text-lg sm:text-xl font-bold text-neutral-800">
                     {feature.title}
                   </h4>
-                  <p className="text-base leading-6 text-neutral-700">
+                  <p className="text-sm sm:text-base leading-6 text-neutral-700">
                     {feature.description}
                   </p>
                 </div>
               ))}
             </div>
             {/* Mobile: single column */}
-            <div className="grid gap-6 md:hidden">
+            <div className="grid gap-4 sm:gap-6 md:hidden">
               {features.slice(2, 4).map((feature, index) => (
                 <div
                   key={index + 2}
-                  className="rounded-2xl border border-neutral-200 bg-white p-6 md:p-8"
+                  className="rounded-xl sm:rounded-2xl border border-neutral-200 bg-white p-4 sm:p-6"
                   style={{
                     boxShadow: "4px 4px 0px rgba(187, 128, 79, 0.5)",
                   }}
                 >
-                  <h4 className="mb-3 text-xl font-bold text-neutral-800">
+                  <h4 className="mb-2 sm:mb-3 text-lg sm:text-xl font-bold text-neutral-800">
                     {feature.title}
                   </h4>
-                  <p className="text-base leading-6 text-neutral-700">
+                  <p className="text-sm sm:text-base leading-6 text-neutral-700">
                     {feature.description}
                   </p>
                 </div>

@@ -33,14 +33,14 @@ export default function ElementPanel({
   onRemove,
 }: ElementPanelProps) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 sm:space-y-4">
       <button
         onClick={onBack}
-        className="flex items-center gap-2 text-sm text-neutral-600 hover:text-neutral-900"
+        className="flex items-center gap-2 text-xs sm:text-sm text-neutral-600 hover:text-neutral-900 active:text-neutral-700 touch-manipulation"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
-          className="h-5 w-5"
+          className="h-4 w-4 sm:h-5 sm:w-5"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -56,23 +56,23 @@ export default function ElementPanel({
       </button>
 
       {elementType === "text" && (
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           <div>
-            <label className="text-sm font-medium text-neutral-700">Text</label>
+            <label className="text-xs sm:text-sm font-medium text-neutral-700">Text</label>
             <textarea
               value={element.textValue || ""}
               onChange={(e) => onUpdate({ textValue: e.target.value })}
               rows={3}
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#FF9AA2]"
             />
           </div>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-3 sm:gap-4 sm:grid-cols-2">
             <div>
-              <label className="text-sm text-neutral-600">Font</label>
+              <label className="text-xs sm:text-sm text-neutral-600">Font</label>
               <select
                 value={element.fontFamily || "Mogra, cursive"}
                 onChange={(e) => onUpdate({ fontFamily: e.target.value })}
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#FF9AA2]"
               >
                 {FONT_OPTIONS.map((font) => (
                   <option key={font.value} value={font.value}>
@@ -82,7 +82,7 @@ export default function ElementPanel({
               </select>
             </div>
             <div>
-              <label className="text-sm text-neutral-600">Color</label>
+              <label className="text-xs sm:text-sm text-neutral-600">Color</label>
               <div className="mt-1 flex items-center gap-2">
                 <input
                   type="color"
@@ -99,11 +99,11 @@ export default function ElementPanel({
                       : "#000000")
                   }
                   onChange={(e) => onUpdate({ textColor: e.target.value })}
-                  className="h-10 flex-1 cursor-pointer rounded-lg border border-neutral-200 bg-white"
+                  className="h-10 sm:h-10 flex-1 cursor-pointer rounded-lg border border-neutral-200 bg-white touch-manipulation"
                 />
                 <button
                   onClick={() => onUpdate({ textColor: undefined })}
-                  className="h-10 w-10 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 flex items-center justify-center"
+                  className="h-10 w-10 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 active:bg-neutral-100 flex items-center justify-center touch-manipulation"
                   title="Remove color"
                 >
                   <svg
@@ -123,8 +123,8 @@ export default function ElementPanel({
                 </button>
               </div>
             </div>
-            <div>
-              <label className="text-sm text-neutral-600">
+            <div className="sm:col-span-2">
+              <label className="text-xs sm:text-sm text-neutral-600">
                 Font Size: {element.fontSize || 24}px
               </label>
               <input
@@ -135,7 +135,7 @@ export default function ElementPanel({
                 onChange={(e) =>
                   onUpdate({ fontSize: Number(e.target.value) })
                 }
-                className="mt-1 w-full"
+                className="mt-1 w-full touch-manipulation"
               />
             </div>
           </div>
@@ -143,33 +143,53 @@ export default function ElementPanel({
       )}
 
       {elementType === "logo" && (
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           <div>
-            <label className="text-sm font-medium text-neutral-700">
+            <label className="text-xs sm:text-sm font-medium text-neutral-700">
               Upload Logo
             </label>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = () => {
-                  onUpdate({ imageData: reader.result as string });
-                };
-                reader.readAsDataURL(file);
-              }}
-              className="mt-2 w-full text-sm text-neutral-600 file:mr-4 file:rounded-full file:border-0 file:bg-brand/10 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-brand hover:file:bg-brand/20"
-            />
+            <label className="mt-2 block">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    onUpdate({ imageData: reader.result as string });
+                  };
+                  reader.readAsDataURL(file);
+                }}
+                className="hidden"
+              />
+              <div className="w-full rounded-lg border-2 border-dashed border-neutral-300 bg-neutral-50 flex flex-col items-center justify-center cursor-pointer hover:bg-neutral-100 active:bg-neutral-200 transition p-4 sm:p-6 gap-2">
+                <svg
+                  className="w-8 h-8 sm:w-10 sm:h-10 text-neutral-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                <span className="text-xs sm:text-sm text-neutral-500 font-medium">
+                  Tap to upload logo
+                </span>
+              </div>
+            </label>
           </div>
         </div>
       )}
 
       {elementType === "qrcode" && (
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           <div>
-            <label className="text-sm font-medium text-neutral-700">
+            <label className="text-xs sm:text-sm font-medium text-neutral-700">
               QR Code Content
             </label>
             <input
@@ -177,7 +197,7 @@ export default function ElementPanel({
               value={element.qrValue || ""}
               onChange={(e) => onUpdate({ qrValue: e.target.value })}
               placeholder="https://example.com or tel:+1234567890"
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#FF9AA2]"
             />
             <p className="mt-1 text-xs text-neutral-500">
               Enter URL, phone (tel:+1234567890), email
@@ -188,9 +208,9 @@ export default function ElementPanel({
       )}
 
       {elementType === "shape" && (
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           <div>
-            <label className="text-sm font-medium text-neutral-700">
+            <label className="text-xs sm:text-sm font-medium text-neutral-700">
               Shape Type
             </label>
             <select
@@ -203,7 +223,7 @@ export default function ElementPanel({
                     | "triangle",
                 })
               }
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#FF9AA2]"
             >
               <option value="square">Square</option>
               <option value="circle">Circle</option>
@@ -211,7 +231,7 @@ export default function ElementPanel({
             </select>
           </div>
           <div>
-            <label className="text-sm font-medium text-neutral-700">Color</label>
+            <label className="text-xs sm:text-sm font-medium text-neutral-700">Color</label>
             <div className="mt-2 flex items-center gap-2">
               <input
                 type="color"
@@ -228,11 +248,11 @@ export default function ElementPanel({
                     : "#000000")
                 }
                 onChange={(e) => onUpdate({ shapeColor: e.target.value })}
-                className="h-12 flex-1 cursor-pointer rounded-lg border border-neutral-200 bg-white"
+                className="h-10 sm:h-12 flex-1 cursor-pointer rounded-lg border border-neutral-200 bg-white touch-manipulation"
               />
               <button
                 onClick={() => onUpdate({ shapeColor: undefined })}
-                className="h-12 w-12 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 flex items-center justify-center"
+                className="h-10 w-10 sm:h-12 sm:w-12 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 active:bg-neutral-100 flex items-center justify-center touch-manipulation"
                 title="Remove color"
               >
                 <svg
@@ -255,25 +275,25 @@ export default function ElementPanel({
         </div>
       )}
 
-      <div className="space-y-2 pt-4 border-t">
-        <p className="text-sm font-medium text-neutral-700">Layer</p>
+      <div className="space-y-2 pt-3 sm:pt-4 border-t">
+        <p className="text-xs sm:text-sm font-medium text-neutral-700">Layer</p>
         <div className="flex gap-2">
           <button
             onClick={onBringToFront}
-            className="flex-1 rounded-lg border border-neutral-200 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+            className="flex-1 rounded-lg border border-neutral-200 px-3 py-2 text-xs sm:text-sm font-medium text-neutral-700 hover:bg-neutral-50 active:bg-neutral-100 touch-manipulation"
           >
             Bring to Front
           </button>
           <button
             onClick={onSendToBack}
-            className="flex-1 rounded-lg border border-neutral-200 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+            className="flex-1 rounded-lg border border-neutral-200 px-3 py-2 text-xs sm:text-sm font-medium text-neutral-700 hover:bg-neutral-50 active:bg-neutral-100 touch-manipulation"
           >
             Send to Back
           </button>
         </div>
         <button
           onClick={onRemove}
-          className="w-full rounded-lg bg-red-500 px-3 py-2 text-sm font-medium text-white hover:bg-red-600"
+          className="w-full rounded-lg bg-red-500 px-3 py-2 text-xs sm:text-sm font-medium text-white hover:bg-red-600 active:bg-red-700 touch-manipulation"
         >
           Remove Element
         </button>

@@ -14,8 +14,13 @@ export default function ProductImageGallery({
 }: ProductImageGalleryProps) {
   const [selectedImage, setSelectedImage] = useState(0);
   const imageWrapRef = useRef<HTMLDivElement | null>(null);
+  const mobileMainImageContainerRef = useRef<HTMLDivElement | null>(null);
+  const thumbnailContainerRefMobile = useRef<HTMLDivElement | null>(null);
+  const thumbnailContainerRefDesktop = useRef<HTMLDivElement | null>(null);
   const [isMagnifying, setIsMagnifying] = useState(false);
   const [isHoveringArrow, setIsHoveringArrow] = useState(false);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
   const [lensPosition, setLensPosition] = useState<{ x: number; y: number }>({
     x: 0,
     y: 0,
@@ -25,6 +30,126 @@ export default function ProductImageGallery({
   const previewSize = 600;
 
   const mainImage = images[selectedImage] ?? images[0];
+
+  // Check scroll position for thumbnail navigation
+  const checkScrollPosition = useCallback(() => {
+    // Check mobile container first, then desktop
+    const container = thumbnailContainerRefMobile.current || thumbnailContainerRefDesktop.current;
+    if (!container) return;
+
+    const { scrollLeft, scrollWidth, clientWidth } = container;
+    setCanScrollLeft(scrollLeft > 0);
+    setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 1);
+  }, []);
+
+  // Scroll thumbnails left
+  const scrollThumbnailsLeft = useCallback(() => {
+    const container = thumbnailContainerRefMobile.current || thumbnailContainerRefDesktop.current;
+    if (!container) return;
+
+    const scrollAmount = 200; // Scroll by 200px
+    container.scrollBy({ left: -scrollAmount, behavior: "smooth" });
+  }, []);
+
+  // Scroll thumbnails right
+  const scrollThumbnailsRight = useCallback(() => {
+    const container = thumbnailContainerRefMobile.current || thumbnailContainerRefDesktop.current;
+    if (!container) return;
+
+    const scrollAmount = 200; // Scroll by 200px
+    container.scrollBy({ left: scrollAmount, behavior: "smooth" });
+  }, []);
+
+  // Detect which image is visible in mobile main image container
+  const updateSelectedImageFromScroll = useCallback(() => {
+    const container = mobileMainImageContainerRef.current;
+    if (!container) return;
+
+    const { scrollLeft, clientWidth } = container;
+    const gap = 12; // 12px gap between images (gap-3 = 12px)
+    const imageWidth = clientWidth;
+    const scrollPosition = scrollLeft;
+    
+    // Calculate which image is currently centered/visible
+    const currentIndex = Math.round(scrollPosition / (imageWidth + gap));
+    const clampedIndex = Math.max(0, Math.min(currentIndex, images.length - 1));
+    
+    if (clampedIndex !== selectedImage) {
+      setSelectedImage(clampedIndex);
+    }
+  }, [images.length, selectedImage]);
+
+  // Scroll thumbnail into view when selected image changes
+  useEffect(() => {
+    const mobileThumbnail = thumbnailContainerRefMobile.current;
+    const desktopThumbnail = thumbnailContainerRefDesktop.current;
+    const container = mobileThumbnail || desktopThumbnail;
+    
+    if (!container || images.length <= 1) return;
+
+    const thumbnailButton = container.children[selectedImage] as HTMLElement;
+    
+    if (thumbnailButton) {
+      const containerRect = container.getBoundingClientRect();
+      const buttonRect = thumbnailButton.getBoundingClientRect();
+      
+      // Check if thumbnail is outside visible area
+      if (buttonRect.left < containerRect.left) {
+        // Scroll left to show thumbnail - align to left edge
+        const scrollLeft = buttonRect.left - containerRect.left + container.scrollLeft - 8; // 8px padding
+        container.scrollTo({
+          left: Math.max(0, scrollLeft),
+          behavior: "smooth",
+        });
+      } else if (buttonRect.right > containerRect.right) {
+        // Scroll right to show thumbnail - align to right edge
+        const scrollLeft = buttonRect.right - containerRect.right + container.scrollLeft + 8; // 8px padding
+        container.scrollTo({
+          left: Math.min(container.scrollWidth - container.clientWidth, scrollLeft),
+          behavior: "smooth",
+        });
+      }
+    }
+  }, [selectedImage, images.length]);
+
+  // Check scroll position on mount and when images change
+  useEffect(() => {
+    checkScrollPosition();
+    const mobileContainer = thumbnailContainerRefMobile.current;
+    const desktopContainer = thumbnailContainerRefDesktop.current;
+    const mainImageContainer = mobileMainImageContainerRef.current;
+    
+    const handleThumbnailScroll = () => checkScrollPosition();
+    const handleMainImageScroll = () => updateSelectedImageFromScroll();
+    const handleResize = () => {
+      checkScrollPosition();
+      updateSelectedImageFromScroll();
+    };
+
+    if (mobileContainer) {
+      mobileContainer.addEventListener("scroll", handleThumbnailScroll);
+    }
+    if (desktopContainer) {
+      desktopContainer.addEventListener("scroll", handleThumbnailScroll);
+    }
+    if (mainImageContainer) {
+      mainImageContainer.addEventListener("scroll", handleMainImageScroll);
+    }
+    window.addEventListener("resize", handleResize);
+    
+    return () => {
+      if (mobileContainer) {
+        mobileContainer.removeEventListener("scroll", handleThumbnailScroll);
+      }
+      if (desktopContainer) {
+        desktopContainer.removeEventListener("scroll", handleThumbnailScroll);
+      }
+      if (mainImageContainer) {
+        mainImageContainer.removeEventListener("scroll", handleMainImageScroll);
+      }
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [checkScrollPosition, updateSelectedImageFromScroll, images.length]);
 
   // Navigation functions for image gallery
   const handlePreviousImage = useCallback(() => {
@@ -140,7 +265,116 @@ export default function ProductImageGallery({
 
   return (
     <div className="space-y-5">
-      <div className="relative">
+      {/* Mobile: Scrollable image gallery */}
+      <div className="md:hidden space-y-4">
+        <div
+          ref={mobileMainImageContainerRef}
+          className="flex gap-3 overflow-x-auto snap-x snap-mandatory scrollbar-hide pb-2 -mx-4 px-4"
+        >
+          {images.map((img, index) => (
+            <div
+              key={img + index}
+              className="relative aspect-[10/10] w-full flex-shrink-0 snap-center overflow-hidden border border-[#efe5dc] bg-white rounded-2xl"
+            >
+              <Image
+                src={img}
+                alt={`${productName} - ${index + 1}`}
+                fill
+                className="object-cover"
+              />
+            </div>
+          ))}
+        </div>
+        
+        {/* Thumbnail images for mobile */}
+        {images.length > 1 && (
+          <div className="relative">
+            {canScrollLeft && (
+              <button
+                onClick={scrollThumbnailsLeft}
+                className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white/90 backdrop-blur-sm shadow-lg border border-neutral-200 flex items-center justify-center hover:bg-white transition"
+                aria-label="Scroll thumbnails left"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4 text-neutral-700"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2.5}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M15 19l-7-7 7-7"
+                  />
+                </svg>
+              </button>
+            )}
+            {canScrollRight && (
+              <button
+                onClick={scrollThumbnailsRight}
+                className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white/90 backdrop-blur-sm shadow-lg border border-neutral-200 flex items-center justify-center hover:bg-white transition"
+                aria-label="Scroll thumbnails right"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4 text-neutral-700"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2.5}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
+              </button>
+            )}
+            <div
+              ref={thumbnailContainerRefMobile}
+              className="flex gap-2 overflow-x-auto scrollbar-hide pb-2"
+              style={{ scrollBehavior: "smooth" }}
+            >
+              {images.map((img, index) => (
+                <button
+                  key={img + index}
+                  onClick={() => {
+                    setSelectedImage(index);
+                    // Scroll main image to selected one on mobile
+                    const mainContainer = mobileMainImageContainerRef.current;
+                    if (mainContainer) {
+                      const imageWidth = mainContainer.clientWidth;
+                      const gap = 12; // gap-3 = 12px
+                      mainContainer.scrollTo({
+                        left: index * (imageWidth + gap),
+                        behavior: "smooth",
+                      });
+                    }
+                  }}
+                  className={`relative h-16 w-16 flex-shrink-0 overflow-hidden border rounded-xl transition ${
+                    selectedImage === index
+                      ? "border-[#d88766] ring-2 ring-[#d88766]/20"
+                      : "border-transparent"
+                  }`}
+                >
+                  <Image
+                    src={img}
+                    alt={`${productName} thumbnail ${index + 1}`}
+                    fill
+                    className="object-cover"
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Desktop: Single image with navigation buttons */}
+      <div className="hidden md:block relative">
         <div
           ref={imageWrapRef}
           className="relative aspect-[10/10] overflow-hidden border border-[#efe5dc] bg-white rounded-2xl"
@@ -177,7 +411,7 @@ export default function ProductImageGallery({
             />
           )}
 
-          {/* Navigation Arrows */}
+          {/* Navigation Arrows - Desktop only */}
           {images.length > 1 && (
             <>
               {/* Left Arrow */}
@@ -319,26 +553,77 @@ export default function ProductImageGallery({
         )}
       </div>
 
+      {/* Thumbnail images - Desktop only */}
       {images.length > 1 && (
-        <div className="flex gap-3">
-          {images.map((img, index) => (
+        <div className="hidden md:block relative">
+          {canScrollLeft && (
             <button
-              key={img + index}
-              onClick={() => setSelectedImage(index)}
-              className={`relative h-20 w-20 flex-shrink-0 overflow-hidden border rounded-2xl ${
-                selectedImage === index
-                  ? "border-[#d88766]"
-                  : "border-transparent"
-              }`}
+              onClick={scrollThumbnailsLeft}
+              className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white/90 backdrop-blur-sm shadow-lg border border-neutral-200 flex items-center justify-center hover:bg-white transition"
+              aria-label="Scroll thumbnails left"
             >
-              <Image
-                src={img}
-                alt={`${productName}-${index}`}
-                fill
-                className="object-cover"
-              />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-4 w-4 text-neutral-700"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2.5}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M15 19l-7-7 7-7"
+                />
+              </svg>
             </button>
-          ))}
+          )}
+          {canScrollRight && (
+            <button
+              onClick={scrollThumbnailsRight}
+              className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white/90 backdrop-blur-sm shadow-lg border border-neutral-200 flex items-center justify-center hover:bg-white transition"
+              aria-label="Scroll thumbnails right"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-4 w-4 text-neutral-700"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2.5}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9 5l7 7-7 7"
+                />
+              </svg>
+            </button>
+          )}
+          <div
+            ref={thumbnailContainerRefDesktop}
+            className="flex gap-2 sm:gap-3 overflow-x-auto pb-2 scrollbar-hide"
+            style={{ scrollBehavior: "smooth" }}
+          >
+            {images.map((img, index) => (
+              <button
+                key={img + index}
+                onClick={() => setSelectedImage(index)}
+                className={`relative h-16 w-16 sm:h-20 sm:w-20 flex-shrink-0 overflow-hidden border rounded-xl sm:rounded-2xl transition ${
+                  selectedImage === index
+                    ? "border-[#d88766] ring-2 ring-[#d88766]/20"
+                    : "border-transparent hover:border-neutral-300"
+                }`}
+              >
+                <Image
+                  src={img}
+                  alt={`${productName} thumbnail ${index + 1}`}
+                  fill
+                  className="object-cover"
+                />
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>

@@ -11,17 +11,16 @@ import useWishlistStore from "@/store/useWishlistStore";
 import AuthModal from "@/components/auth/AuthModal";
 import Modal from "@/components/ui/Modal";
 import { SlotKey } from "@/constants/customization";
-import { loadDesign, saveDesign, type DesignElement } from "@/lib/designStorage";
+import {
+  loadDesign,
+  saveDesign,
+  type DesignElement,
+} from "@/lib/designStorage";
 import ProductImageGallery from "./ProductImageGallery";
 import ProductCustomizationSection from "./ProductCustomizationSection";
 import ProductSections from "./ProductSections";
 import ReviewsSection from "./ReviewsSection";
-import type {
-  ProductDetail,
-  ColorEntry,
-  PrintLocation,
-  Review,
-} from "./types";
+import type { ProductDetail, ColorEntry, PrintLocation, Review } from "./types";
 
 const colorSwatches = ["#c3b2a3", "#e6dbd0", "#c5b7a0", "#f6f2ec"];
 
@@ -41,6 +40,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
   const addItem = useCartStore((state) => state.addItem);
   const removeItem = useCartStore((state) => state.removeItem);
   const getItemQuantity = useCartStore((state) => state.getItemQuantity);
+  const removeWishlistItem = useWishlistStore((state) => state.removeItem);
   // Subscribe to cart items to trigger re-renders when cart changes
   useCartStore((state) => state.items);
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -60,8 +60,10 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
 
   // Get color from URL params, default to first color
   const colorFromUrl = searchParams.get("color");
-  const decodedColorFromUrl = colorFromUrl ? decodeURIComponent(colorFromUrl) : null;
-  
+  const decodedColorFromUrl = colorFromUrl
+    ? decodeURIComponent(colorFromUrl)
+    : null;
+
   const [selectedColor, setSelectedColor] = useState(() => {
     if (decodedColorFromUrl) {
       // If URL has "default", map it to the first color entry (which might be "Gold")
@@ -69,7 +71,9 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
         return colorEntries[0][0];
       }
       // Check if the color from URL exists in colorEntries
-      const colorExists = colorEntries.find(([key]) => key === decodedColorFromUrl);
+      const colorExists = colorEntries.find(
+        ([key]) => key === decodedColorFromUrl
+      );
       if (colorExists) {
         return decodedColorFromUrl;
       }
@@ -86,7 +90,9 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
           setSelectedColor(firstColor);
         }
       } else {
-        const colorExists = colorEntries.find(([key]) => key === decodedColorFromUrl);
+        const colorExists = colorEntries.find(
+          ([key]) => key === decodedColorFromUrl
+        );
         if (colorExists && decodedColorFromUrl !== selectedColor) {
           setSelectedColor(decodedColorFromUrl);
         }
@@ -106,19 +112,19 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
 
   // Wishlist hooks - must be after selectedColor is defined
   // Subscribe to items to trigger re-renders when wishlist changes
-  // Subscribe to wishlist items to trigger re-renders when wishlist changes
-  useWishlistStore((state) => state.items);
+  const wishlistItems = useWishlistStore((state) => state.items);
   const isWishlistedCheck = useWishlistStore((state) => state.isWishlisted);
   const toggleWishlist = useWishlistStore((state) => state.toggleItem);
-  
-  // Recalculate colorKeyForWishlist and isWishlisted whenever selectedColor or wishlistItems change
+
   const colorKeyForWishlist = useMemo(() => {
-    return selectedColor !== "Gold" && selectedColor !== "default" ? selectedColor : undefined;
+    return selectedColor !== "Gold" && selectedColor !== "default"
+      ? selectedColor
+      : undefined;
   }, [selectedColor]);
-  
-  const isWishlisted = useMemo(() => {
-    return isAuthenticated && isWishlistedCheck(product._id, colorKeyForWishlist);
-  }, [isAuthenticated, isWishlistedCheck, product._id, colorKeyForWishlist]);
+
+  // Compute isWishlisted directly (not in useMemo) so it updates when wishlistItems changes
+  const isWishlisted =
+    isAuthenticated && isWishlistedCheck(product._id, colorKeyForWishlist);
 
   const cartSize = selectedSize || undefined;
   const cartColor = selectedColor !== "Gold" ? selectedColor : undefined;
@@ -180,8 +186,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
     const savedDesign = loadDesign(product._id);
     if (printLocations.length > 0 || savedDesign) {
       return {
-        printLocations:
-          printLocations.length > 0 ? printLocations : undefined,
+        printLocations: printLocations.length > 0 ? printLocations : undefined,
         printSize: selectedPrintSize,
         elements: savedDesign?.elements || undefined,
         sketchedImage: savedDesign ? true : undefined,
@@ -486,7 +491,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
   const ratingAverage = product.ratingsSummary?.average ?? 0;
 
   return (
-    <div className="space-y-12 relative">
+    <div className="space-y-6 sm:space-y-8 md:space-y-12 relative">
       {isChangingColor && (
         <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-50 flex items-center justify-center">
           <div className="flex flex-col items-center gap-3">
@@ -495,9 +500,12 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
           </div>
         </div>
       )}
-      <div className="grid gap-12 lg:grid-cols-[minmax(0,40%)_minmax(0,60%)]">
+      <div className="grid gap-6 sm:gap-8 md:gap-12 lg:grid-cols-[minmax(0,40%)_minmax(0,60%)]">
         <div className="flex flex-col gap-4">
-        <ProductImageGallery images={galleryImages} productName={product.name} />
+          <ProductImageGallery
+            images={galleryImages}
+            productName={product.name}
+          />
           {minQuantity > 1 && !hasBoughtSample && (
             <button
               onClick={() => {
@@ -507,80 +515,80 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                 }
                 router.push(`/checkout?sample=${product._id}`);
               }}
-              className="items-center justify-center rounded-2xl bg-[var(--color-button)] px-6 py-4 text-sm text-white hover:bg-[var(--color-button-hover)] transition cursor-pointer"
+              className="items-center justify-center rounded-2xl bg-[var(--color-button)] px-4 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-white hover:bg-[var(--color-button-hover)] transition cursor-pointer"
             >
               Enquire for bulk orders
             </button>
           )}
         </div>
-        
 
-        <div className="space-y-6 text-[#1d1d1f]">
+        <div className="space-y-4 sm:space-y-5 md:space-y-6 text-[#1d1d1f]">
           <div className="space-y-1">
-            <h1 className="text-[34px] font-semibold leading-tight">
+            <h1 className="text-2xl sm:text-3xl md:text-[34px] font-normal leading-tight">
               {product.name}
             </h1>
-            <div className="flex items-center gap-3 text-sm text-[#6f6f6f]">
-              {ratingCount > 0 ? (
-                <>
-                  <button
-                    onClick={() => {
-                      reviewsSectionRef.current?.scrollIntoView({
-                        behavior: "smooth",
-                        block: "start",
-                      });
-                    }}
-                    className="inline-flex items-center gap-1 rounded-full border border-[#f5eabf] bg-[#fff8db] px-2.5 py-1 text-xs font-semibold text-[#8b6f00] hover:bg-[#fff3c4] transition cursor-pointer"
-                  >
-                    ⭐ {ratingAverage.toFixed(1)}
-                  </button>
-                  <button
-                    onClick={() => {
-                      reviewsSectionRef.current?.scrollIntoView({
-                        behavior: "smooth",
-                        block: "start",
-                      });
-                    }}
-                    className="hover:underline cursor-pointer"
-                  >
-                    ({ratingCount} {ratingCount === 1 ? "rating" : "ratings"})
-                  </button>
-                </>
-              ) : (
-                <span>No ratings yet — be the first to buy!</span>
-              )}
-            </div>
           </div>
 
-          <div className="space-y-1">
-            <div className="flex items-end gap-3">
-              <span className="text-[28px] font-semibold">
+          <div className="space-y-3">
+            <div className="flex items-end gap-3 flex-wrap">
+              <span className="text-xl sm:text-2xl md:text-[28px] font-normal text-[#686363]">
                 ₹{Math.round(product.price)} per piece
               </span>
             </div>
-            <p className="text-sm text-[#6f6f6f]">
+            <p className="text-xs sm:text-sm text-[#686363]">
               incl. local Tax & Shipping.
             </p>
           </div>
 
-          <p className="text-sm leading-7 text-[#4c4c4c]">
+          <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm text-[#6f6f6f]">
+            {ratingCount > 0 ? (
+              <>
+                <button
+                  onClick={() => {
+                    reviewsSectionRef.current?.scrollIntoView({
+                      behavior: "smooth",
+                      block: "start",
+                    });
+                  }}
+                  className="inline-flex items-center gap-1 rounded-full border border-[#f5eabf] bg-[#fff8db] px-2 sm:px-2.5 py-0.5 sm:py-1 text-[10px] sm:text-xs font-semibold text-[#8b6f00] hover:bg-[#fff3c4] transition cursor-pointer"
+                >
+                  ⭐ {ratingAverage.toFixed(1)}
+                </button>
+                <button
+                  onClick={() => {
+                    reviewsSectionRef.current?.scrollIntoView({
+                      behavior: "smooth",
+                      block: "start",
+                    });
+                  }}
+                  className="hover:underline cursor-pointer"
+                >
+                  ({ratingCount} {ratingCount === 1 ? "rating" : "ratings"})
+                </button>
+              </>
+            ) : (
+              <span>No ratings yet — be the first to buy!</span>
+            )}
+          </div>
+
+          <p className="text-xs sm:text-sm leading-6 sm:leading-7 text-[#4c4c4c]">
             {product.description}
           </p>
 
           {product.sizes && product.sizes.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-sm font-semibold">
+            <div className="space-y-2 sm:space-y-3">
+              <div className="flex items-center justify-between text-xs sm:text-sm font-semibold">
                 <span>Select Size</span>
                 <button className="text-xs text-[#6f6f6f] underline underline-offset-2">
                   Size guide
                 </button>
               </div>
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-wrap gap-2 sm:gap-3">
                 {product.sizes.map((size) => (
                   <button
                     key={size}
                     onClick={() => setSelectedSize(size)}
-                    className={`rounded-2xl border px-4 py-2 text-sm ${
+                    className={`rounded-2xl border px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm ${
                       selectedSize === size
                         ? "border-[#1d1d1f] text-[#1d1d1f]"
                         : "border-[#dfdfdf] text-[#6f6f6f]"
@@ -593,11 +601,11 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
             </div>
           )}
 
-          <div className="space-y-3">
-            <div className="text-sm font-semibold text-[#525252]">
+          <div className="space-y-2 sm:space-y-3">
+            <div className="text-xs sm:text-sm font-semibold text-[#525252]">
               Select Quantity (Min: {minQuantity} units)
             </div>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-4 gap-2 sm:gap-3">
               {quantityPresets.map((qty) => (
                 <button
                   key={qty}
@@ -605,24 +613,28 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                     setSelectedQty(qty);
                     setCustomQty("");
                   }}
-                  className={`rounded-2xl border px-4 py-3 text-center transition ${
+                  className={`rounded-2xl border px-2 sm:px-4 py-2 sm:py-3 text-center transition ${
                     selectedQty === qty
                       ? "border-[#1d1d1f] bg-[#f5f5f5]"
                       : "border-[#e5e0d8] hover:border-[#cbb7a3]"
                   }`}
                 >
-                  <div className="text-lg">{qty}</div>
-                  <div className="text-xs text-[#6f6f6f]">units</div>
+                  <div className="text-sm sm:text-lg">{qty}</div>
+                  <div className="text-[10px] sm:text-xs text-[#6f6f6f]">
+                    units
+                  </div>
                 </button>
               ))}
               <div
-                className={`rounded-2xl border px-4 py-2 transition ${
+                className={`rounded-2xl border px-2 sm:px-4 py-1.5 sm:py-2 transition ${
                   selectedQty === null && customQty
                     ? "border-[#1d1d1f] bg-[#f5f5f5]"
                     : "border-[#e5e0d8]"
                 }`}
               >
-                <label className="text-xs text-[#6f6f6f]">Custom</label>
+                <label className="text-[10px] sm:text-xs text-[#6f6f6f]">
+                  Custom
+                </label>
                 <input
                   type="number"
                   min={minQuantity}
@@ -652,13 +664,13 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                       }
                     }
                   }}
-                  className="w-full border-none bg-transparent text-sm text-[#1d1d1f] outline-none"
+                  className="w-full border-none bg-transparent text-xs sm:text-sm text-[#1d1d1f] outline-none"
                   placeholder={`min ${minQuantity}`}
                 />
               </div>
             </div>
             {selectedQty === null && customQty && (
-              <p className="text-xs text-[#6f6f6f]">
+              <p className="text-[10px] sm:text-xs text-[#6f6f6f]">
                 Minimum order: {minQuantity} units
               </p>
             )}
@@ -675,17 +687,17 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
           />
 
           <div className="space-y-2">
-            <label className="text-sm text-[#525252]">Message</label>
+            <label className="text-xs sm:text-sm text-[#525252]">Message</label>
             <textarea
               rows={3}
               placeholder="Write your message"
-              className="w-full rounded-2xl border border-[#e5dfd7] px-4 py-3 text-sm text-[#4a4a4a] focus:border-[#1d1d1f] focus:outline-none"
+              className="w-full rounded-2xl border border-[#e5dfd7] px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-[#4a4a4a] focus:border-[#1d1d1f] focus:outline-none"
             />
           </div>
 
-          <div className="space-y-3">
-            <p className="text-sm text-[#525252]">Select Color</p>
-            <div className="flex gap-3">
+          <div className="space-y-2 sm:space-y-3">
+            <p className="text-xs sm:text-sm text-[#525252]">Select Color</p>
+            <div className="flex gap-2 sm:gap-3">
               {colorEntries.map(([key], idx) => {
                 const colorValue = key.startsWith("#")
                   ? key
@@ -705,7 +717,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                       );
                     }}
                     disabled={isChangingColor}
-                    className={`h-9 w-9 rounded-full border-3 flex items-center justify-center transition ${
+                    className={`h-8 w-8 sm:h-9 sm:w-9 rounded-full border-3 flex items-center justify-center transition ${
                       selectedColor === key
                         ? "border-brand"
                         : "border-[#ece2d7]"
@@ -717,7 +729,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                     title={key}
                   >
                     <span
-                      className="h-7 w-7 rounded-full shadow"
+                      className="h-6 w-6 sm:h-7 sm:w-7 rounded-full shadow"
                       style={{
                         backgroundColor: colorValue,
                       }}
@@ -728,7 +740,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-3 pt-2">
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
             <AuthModal
               isOpen={showAuthModal}
               onClose={() => setShowAuthModal(false)}
@@ -764,19 +776,23 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
 
                 // Load saved design using shared utility
                 const savedDesign = loadDesign(product._id);
-                const colorKey = selectedColor !== "Gold" ? selectedColor : "default";
-                
+                const colorKey =
+                  selectedColor !== "Gold" ? selectedColor : "default";
+
                 // Get printLocations from state or saved design
                 let finalPrintLocations = printLocations;
                 if (savedDesign?.printLocations?.[colorKey]) {
                   // Merge state and saved design, with state taking precedence
-                  const savedPrintLocations = savedDesign.printLocations[colorKey];
+                  const savedPrintLocations =
+                    savedDesign.printLocations[colorKey];
                   if (finalPrintLocations.length === 0) {
                     finalPrintLocations = savedPrintLocations;
                   } else {
                     // Merge: use state locations, but fill in any missing from saved
-                    const stateSlots = new Set(finalPrintLocations.map(loc => loc.slot));
-                    savedPrintLocations.forEach(savedLoc => {
+                    const stateSlots = new Set(
+                      finalPrintLocations.map((loc) => loc.slot)
+                    );
+                    savedPrintLocations.forEach((savedLoc) => {
                       if (!stateSlots.has(savedLoc.slot)) {
                         finalPrintLocations.push(savedLoc);
                       }
@@ -788,7 +804,9 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                 if (finalPrintLocations.length > 0 || savedDesign) {
                   customizationData = {
                     printLocations:
-                      finalPrintLocations.length > 0 ? finalPrintLocations : undefined,
+                      finalPrintLocations.length > 0
+                        ? finalPrintLocations
+                        : undefined,
                     printSize: selectedPrintSize,
                     elements: savedDesign?.elements || undefined,
                     sketchedImage: savedDesign ? true : undefined,
@@ -846,6 +864,29 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                     token,
                     () => setShowAuthModal(true)
                   );
+
+                  // If coming from wishlist, remove from wishlist after adding to cart
+                  const fromWishlist = searchParams.get("fromWishlist");
+                  if (fromWishlist === "true" && token) {
+                    try {
+                      // Use the color from URL (what was in wishlist), not the selected color
+                      const colorKey = colorFromUrl
+                        ? decodeURIComponent(colorFromUrl)
+                        : undefined;
+                      await removeWishlistItem(
+                        product._id,
+                        token,
+                        () => setShowAuthModal(true),
+                        colorKey && colorKey !== "default"
+                          ? colorKey
+                          : undefined
+                      );
+                    } catch (error) {
+                      // Don't show error if wishlist removal fails, cart addition succeeded
+                      console.error("Error removing from wishlist:", error);
+                    }
+                  }
+
                   toast.success(
                     editingCartItemId ? "Cart item updated!" : "Added to cart!"
                   );
@@ -859,7 +900,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                   console.error("Error adding to cart:", error);
                 }
               }}
-              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[var(--color-button)] px-6 py-4 text-sm text-white shadow shadow-[var(--color-button)]/30 hover:bg-[var(--color-button-hover)] transition cursor-pointer"
+              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[var(--color-button)] px-4 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-white shadow shadow-[var(--color-button)]/30 hover:bg-[var(--color-button-hover)] transition cursor-pointer"
             >
               {shouldShowViewInBag ? (
                 <>
@@ -885,87 +926,94 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                   }
                   router.push(`/checkout?sample=${product._id}`);
                 }}
-                className="flex flex-1 items-center justify-center rounded-2xl bg-[var(--color-button-secondary)] px-6 py-4 text-sm text-[#4a4a4a] hover:bg-[var(--color-button-secondary-hover)] transition"
+                className="flex flex-1 items-center justify-center rounded-2xl bg-[var(--color-button-secondary)] px-4 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-[#4a4a4a] hover:bg-[var(--color-button-secondary-hover)] transition"
               >
                 Buy a sample
               </button>
             )}
-            <button
-              onClick={async () => {
-                if (!isAuthenticated || !token) {
-                  setShowAuthModal(true);
-                  return;
-                }
-
-                try {
-                  // Get current wishlist state before toggle
-                  const wasWishlisted = isWishlisted;
-                  // Use current selectedColor to ensure we're using the right color
-                  const currentColorKey = selectedColor !== "Gold" && selectedColor !== "default" ? selectedColor : undefined;
-                  
-                  await toggleWishlist(product._id, token, () =>
-                    setShowAuthModal(true),
-                    currentColorKey
-                  );
-                  
-                  if (wasWishlisted) {
-                    toast.success("Removed from wishlist");
-                  } else {
-                    toast.success("Added to wishlist");
+            <div className="flex gap-2 sm:gap-3">
+              <button
+                onClick={async () => {
+                  if (!isAuthenticated || !token) {
+                    setShowAuthModal(true);
+                    return;
                   }
-                } catch (error) {
-                  console.error("Error toggling wishlist:", error);
-                  toast.error("Failed to update wishlist");
-                }
-              }}
-              className={`flex h-14 w-14 items-center justify-center rounded-2xl border transition ${
-                isWishlisted
-                  ? "border-[#ec4899] bg-pink-50 text-[#ec4899]"
-                  : "border-[#e5dfd7] text-[#7a7a7a] hover:border-[#cbb7a3]"
-              }`}
-              aria-label={
-                isWishlisted ? "Remove from wishlist" : "Add to wishlist"
-              }
-            >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 19 18"
-                fill={isWishlisted ? "#ec4899" : "none"}
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  fillRule="evenodd"
-                  clipRule="evenodd"
-                  d="M1.08757 8.63127C0.103988 5.56044 1.25257 2.05052 4.4774 1.01194C5.31363 0.744365 6.20172 0.680634 7.06758 0.826061C7.93344 0.971487 8.75198 1.32186 9.4549 1.84794C10.7887 0.816689 12.7292 0.468355 14.4232 1.01194C17.6472 2.05052 18.804 5.56044 17.8213 8.63127C16.2905 13.4988 9.4549 17.2479 9.4549 17.2479C9.4549 17.2479 2.66974 13.5556 1.08757 8.63127V8.63127Z"
-                  stroke={isWishlisted ? "#ec4899" : "#272343"}
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
 
-            <button
-              onClick={() => setShowShareDropdown(true)}
-              className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[#e5dfd7] text-[#7a7a7a] hover:border-[#cbb7a3] transition"
-              aria-label="Share product"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={1.5}
+                  try {
+                    // Get current wishlist state before toggle
+                    const wasWishlisted = isWishlisted;
+                    // Use current selectedColor to ensure we're using the right color
+                    const currentColorKey =
+                      selectedColor !== "Gold" && selectedColor !== "default"
+                        ? selectedColor
+                        : undefined;
+
+                    await toggleWishlist(
+                      product._id,
+                      token,
+                      () => setShowAuthModal(true),
+                      currentColorKey
+                    );
+
+                    if (wasWishlisted) {
+                      toast.success("Removed from wishlist");
+                    } else {
+                      toast.success("Added to wishlist");
+                    }
+                  } catch (error) {
+                    console.error("Error toggling wishlist:", error);
+                    toast.error("Failed to update wishlist");
+                  }
+                }}
+                className={`flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl border transition ${
+                  isWishlisted
+                    ? "border-[#ec4899] bg-pink-50 text-[#ec4899]"
+                    : "border-[#e5dfd7] text-[#7a7a7a] hover:border-[#cbb7a3]"
+                }`}
+                aria-label={
+                  isWishlisted ? "Remove from wishlist" : "Add to wishlist"
+                }
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.935-2.186 2.25 2.25 0 00-3.935 2.186z"
-                />
-              </svg>
-            </button>
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 19 18"
+                  fill={isWishlisted ? "#ec4899" : "none"}
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    fillRule="evenodd"
+                    clipRule="evenodd"
+                    d="M1.08757 8.63127C0.103988 5.56044 1.25257 2.05052 4.4774 1.01194C5.31363 0.744365 6.20172 0.680634 7.06758 0.826061C7.93344 0.971487 8.75198 1.32186 9.4549 1.84794C10.7887 0.816689 12.7292 0.468355 14.4232 1.01194C17.6472 2.05052 18.804 5.56044 17.8213 8.63127C16.2905 13.4988 9.4549 17.2479 9.4549 17.2479C9.4549 17.2479 2.66974 13.5556 1.08757 8.63127V8.63127Z"
+                    stroke={isWishlisted ? "#ec4899" : "#272343"}
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+
+              <button
+                onClick={() => setShowShareDropdown(true)}
+                className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl border border-[#e5dfd7] text-[#7a7a7a] hover:border-[#cbb7a3] transition"
+                aria-label="Share product"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={1.5}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.935-2.186 2.25 2.25 0 00-3.935 2.186z"
+                  />
+                </svg>
+              </button>
+            </div>
 
             <Modal
               isOpen={showShareDropdown}

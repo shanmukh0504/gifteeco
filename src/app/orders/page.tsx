@@ -68,13 +68,21 @@ function OrderCustomizationModal({
   if (!item || !item.customization) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Customized Details" size="lg">
-      <div className="px-8 py-6 [&::-webkit-scrollbar]:hidden font-satoshi" style={{
-        maxHeight: "calc(90vh - 3rem)",
-        overflowY: "auto",
-        scrollbarWidth: "none",
-        msOverflowStyle: "none",
-      }}>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Customized Details"
+      size="lg"
+    >
+      <div
+        className="px-8 py-6 [&::-webkit-scrollbar]:hidden font-satoshi"
+        style={{
+          maxHeight: "calc(90vh - 3rem)",
+          overflowY: "auto",
+          scrollbarWidth: "none",
+          msOverflowStyle: "none",
+        }}
+      >
         <OrderCustomizationDisplay
           customization={item.customization}
           orderId={item.product._id}
@@ -155,7 +163,9 @@ function OrdersPageContent() {
           const daysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
           return orderDate >= daysAgo;
         } else if (timeFilter === "6months") {
-          const monthsAgo = new Date(now.getTime() - 6 * 30 * 24 * 60 * 60 * 1000);
+          const monthsAgo = new Date(
+            now.getTime() - 6 * 30 * 24 * 60 * 60 * 1000
+          );
           return orderDate >= monthsAgo;
         }
         return true;
@@ -170,7 +180,10 @@ function OrdersPageContent() {
     const grouped: Record<string, Order[]> = {};
     filteredOrders.forEach((order) => {
       const date = new Date(order.createdAt);
-      const monthLabel = date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+      const monthLabel = date.toLocaleDateString("en-US", {
+        month: "long",
+        year: "numeric",
+      });
       if (!grouped[monthLabel]) {
         grouped[monthLabel] = [];
       }
@@ -183,7 +196,7 @@ function OrdersPageContent() {
     if (item.color && item.product.colors?.[item.color]?.images?.[0]) {
       return item.product.colors?.[item.color]?.images?.[0];
     }
-    if (item.product.colors) {
+    if (item.product.colors && Object.keys(item.product.colors).length > 0) {
       const firstColor = Object.values(item.product.colors)[0];
       return firstColor?.images?.[0];
     }
@@ -238,8 +251,12 @@ function OrdersPageContent() {
           {/* Main Content */}
           <div className="lg:col-span-3">
             <div className="mb-6">
-              <h1 className="text-2xl font-semibold text-neutral-900 mb-2">My Orders</h1>
-              <p className="text-sm text-neutral-600">View and track your order history</p>
+              <h1 className="text-2xl font-semibold text-neutral-900 mb-2">
+                My Orders
+              </h1>
+              <p className="text-sm text-neutral-600">
+                View and track your order history
+              </p>
             </div>
 
             {/* Filters */}
@@ -302,95 +319,113 @@ function OrdersPageContent() {
                 <p className="text-neutral-500 text-lg">No orders found</p>
               </Card>
             ) : (
-          <div className="space-y-8">
-            {Object.entries(ordersByMonth).map(([month, monthOrders]) => (
-              <div key={month}>
-                <h2 className="text-xl font-semibold text-neutral-900 mb-4">{month}</h2>
-                <div className="space-y-4">
-                  {monthOrders.map((order) => (
-                    <Card
-                      key={order._id}
-                      className="bg-white border border-neutral-200 overflow-hidden"
-                    >
-                      <div className="p-6">
-                        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4 pb-4 border-b border-neutral-200">
-                          <div>
-                            <p className="text-sm text-neutral-500">Order Date</p>
-                            <p className="text-base font-medium text-neutral-900">
-                              {formatDate(order.createdAt)}
-                            </p>
-                          </div>
-                          <div className="mt-2 md:mt-0">
-                            <p className="text-sm text-neutral-500">Order ID</p>
-                            <p className="text-base font-medium text-neutral-900">
-                              #{order._id.slice(-8).toUpperCase()}
-                            </p>
-                          </div>
-                          <div className="mt-2 md:mt-0">
-                            <p className="text-sm text-neutral-500">Status</p>
-                            <span
-                              className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(
-                                order.status
-                              )}`}
-                            >
-                              {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-                            </span>
-                          </div>
-                          <div className="mt-2 md:mt-0 text-right">
-                            <p className="text-sm text-neutral-500">Total Amount</p>
-                            <p className="text-lg font-bold text-[#CF6144]">
-                              ₹{order.totalAmount.toLocaleString()}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="space-y-4">
-                          {order.items.map((item, idx) => (
-                            <div
-                              key={idx}
-                              className="flex flex-col md:flex-row gap-4 p-4 bg-neutral-50 rounded-lg"
-                            >
-                              <div className="relative w-full md:w-24 h-24 rounded-lg overflow-hidden flex-shrink-0">
-                                <Image
-                                  src={getProductImage(item) || "/placeholder.png"}
-                                  alt={item.product.name}
-                                  fill
-                                  className="object-cover"
-                                  unoptimized
-                                />
-                              </div>
-                              <div className="flex-1">
-                                <h3 className="font-semibold text-neutral-900 mb-1">
-                                  {item.product.name}
-                                </h3>
-                                <p className="text-sm text-neutral-600">
-                                  Quantity: {item.quantity} | Size: {item.size}
-                                  {item.color && ` | Color: ${item.color}`}
+              <div className="space-y-8">
+                {Object.entries(ordersByMonth).map(([month, monthOrders]) => (
+                  <div key={month}>
+                    <h2 className="text-xl font-semibold text-neutral-900 mb-4">
+                      {month}
+                    </h2>
+                    <div className="space-y-4">
+                      {monthOrders.map((order) => (
+                        <Card
+                          key={order._id}
+                          className="bg-white border border-neutral-200 overflow-hidden"
+                        >
+                          <div className="p-6">
+                            <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4 pb-4 border-b border-neutral-200">
+                              <div>
+                                <p className="text-sm text-neutral-500">
+                                  Order Date
                                 </p>
-                                <p className="text-sm font-medium text-neutral-900 mt-1">
-                                  ₹{item.price.toLocaleString()} each
+                                <p className="text-base font-medium text-neutral-900">
+                                  {formatDate(order.createdAt)}
                                 </p>
                               </div>
-                              {item.customization && (
-                                <button
-                                  onClick={() =>
-                                    setSelectedCustomization({ isOpen: true, item })
-                                  }
-                                  className="px-4 py-2 bg-[#CF6144] text-white rounded-lg hover:bg-[#B8503A] transition text-sm font-medium"
+                              <div className="mt-2 md:mt-0">
+                                <p className="text-sm text-neutral-500">
+                                  Order ID
+                                </p>
+                                <p className="text-base font-medium text-neutral-900">
+                                  #{order._id.slice(-8).toUpperCase()}
+                                </p>
+                              </div>
+                              <div className="mt-2 md:mt-0">
+                                <p className="text-sm text-neutral-500">
+                                  Status
+                                </p>
+                                <span
+                                  className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(
+                                    order.status
+                                  )}`}
                                 >
-                                  View Customization
-                                </button>
-                              )}
+                                  {order.status.charAt(0).toUpperCase() +
+                                    order.status.slice(1)}
+                                </span>
+                              </div>
+                              <div className="mt-2 md:mt-0 text-right">
+                                <p className="text-sm text-neutral-500">
+                                  Total Amount
+                                </p>
+                                <p className="text-lg font-bold text-[#CF6144]">
+                                  ₹{order.totalAmount.toLocaleString()}
+                                </p>
+                              </div>
                             </div>
-                          ))}
-                        </div>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
+
+                            <div className="space-y-4">
+                              {order.items.map((item, idx) => (
+                                <div
+                                  key={idx}
+                                  className="flex flex-col md:flex-row gap-4 p-4 bg-neutral-50 rounded-lg"
+                                >
+                                  <div className="relative w-full md:w-24 h-24 rounded-lg overflow-hidden flex-shrink-0">
+                                    <Image
+                                      src={
+                                        getProductImage(item) ||
+                                        "/placeholder.png"
+                                      }
+                                      alt={item.product.name}
+                                      fill
+                                      className="object-cover"
+                                      unoptimized
+                                    />
+                                  </div>
+                                  <div className="flex-1">
+                                    <h3 className="font-semibold text-neutral-900 mb-1">
+                                      {item.product.name}
+                                    </h3>
+                                    <p className="text-sm text-neutral-600">
+                                      Quantity: {item.quantity} | Size:{" "}
+                                      {item.size}
+                                      {item.color && ` | Color: ${item.color}`}
+                                    </p>
+                                    <p className="text-sm font-medium text-neutral-900 mt-1">
+                                      ₹{item.price.toLocaleString()} each
+                                    </p>
+                                  </div>
+                                  {item.customization && (
+                                    <button
+                                      onClick={() =>
+                                        setSelectedCustomization({
+                                          isOpen: true,
+                                          item,
+                                        })
+                                      }
+                                      className="px-4 py-2 bg-[#CF6144] text-white rounded-lg hover:bg-[#B8503A] transition text-sm font-medium self-center cursor-pointer"
+                                    >
+                                      View Customization
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-            </div>
             )}
           </div>
         </div>
@@ -422,4 +457,3 @@ export default function OrdersPage() {
     </Suspense>
   );
 }
-

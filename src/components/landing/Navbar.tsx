@@ -90,6 +90,52 @@ export default function Navbar() {
     [pathname, router]
   );
 
+  // State declarations
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [showBulkDropdown, setShowBulkDropdown] = useState(false);
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [mobileCategoryOpen, setMobileCategoryOpen] = useState<string | null>(
+    null
+  );
+  const [mobileBulkOpen, setMobileBulkOpen] = useState(false);
+
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const bulkDropdownRef = useRef<HTMLDivElement>(null);
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const bulkTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const profileTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
+  const [autocorrect, setAutocorrect] = useState<string | null>(null);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [pathname]);
+
+  // Prevent body scroll when mobile menu is open
+  useEffect(() => {
+    if (isMobileMenuOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isMobileMenuOpen]);
+
   useEffect(() => {
     if (pathname === "/" && window.location.hash) {
       const hash = window.location.hash;
@@ -107,27 +153,6 @@ export default function Navbar() {
       return () => clearTimeout(timeoutId);
     }
   }, [pathname]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [showBulkDropdown, setShowBulkDropdown] = useState(false);
-  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
-  const [showLogoutModal, setShowLogoutModal] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const bulkDropdownRef = useRef<HTMLDivElement>(null);
-  const profileDropdownRef = useRef<HTMLDivElement>(null);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const bulkTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const profileTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
-  const [autocorrect, setAutocorrect] = useState<string | null>(null);
-  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const searchContainerRef = useRef<HTMLDivElement>(null);
-  const suggestionsRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     fetchCategories();
@@ -286,7 +311,7 @@ export default function Navbar() {
         )}
       <header className="w-full sticky top-0 z-50 bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/60 shadow-sm">
         <nav className="mx-auto flex w-full items-center justify-between px-4 py-2 md:px-10">
-          <Link href="/" className="flex items-center">
+          <Link href="/" className="flex items-center z-50">
             <Image
               src="/logo.png"
               alt="Gifteeco"
@@ -297,6 +322,7 @@ export default function Navbar() {
             />
           </Link>
 
+          {/* Desktop Navigation */}
           <div className="ml-auto hidden items-center gap-6 text-sm font-semibold text-neutral-700 md:flex">
             <div
               ref={dropdownRef}
@@ -645,7 +671,7 @@ export default function Navbar() {
                 }}
               >
                 <button
-                  className="p-2 rounded-lg hover:bg-neutral-100 flex-shrink-0 relative"
+                  className="p-1 rounded-lg hover:bg-neutral-100 flex-shrink-0 relative cursor-pointer"
                   onMouseEnter={() => {
                     if (profileTimeoutRef.current) {
                       clearTimeout(profileTimeoutRef.current);
@@ -764,7 +790,7 @@ export default function Navbar() {
                         setShowProfileDropdown(false);
                         handleLogout();
                       }}
-                      className="w-full text-left px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 hover:text-red-600 transition-colors"
+                      className="w-full text-left px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 hover:text-red-600 transition-colors cursor-pointer"
                     >
                       Logout
                     </button>
@@ -790,7 +816,7 @@ export default function Navbar() {
                       </button>
                       <button
                         onClick={confirmLogout}
-                        className="px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition"
+                        className="px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition cursor-pointer"
                       >
                         Logout
                       </button>
@@ -815,8 +841,458 @@ export default function Navbar() {
               </>
             )}
           </div>
+
+          {/* Mobile Navigation */}
+          <div className="flex items-center gap-2 md:hidden">
+            {/* Mobile Wishlist */}
+            <Link
+              href="/wishlist"
+              className="p-2 rounded-lg hover:bg-neutral-100 flex-shrink-0 relative"
+            >
+              <Image
+                src="/wishlist.svg"
+                alt="Wishlist"
+                width={18}
+                height={18}
+              />
+            </Link>
+
+            {/* Mobile Cart */}
+            <Link
+              href="/cart"
+              className="p-2 rounded-lg hover:bg-neutral-100 flex-shrink-0 relative"
+            >
+              <Image src="/cart.svg" alt="Cart" width={18} height={18} />
+              <CartCountBadge />
+            </Link>
+
+            {/* Burger Menu Button */}
+            <button
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="p-2 rounded-lg hover:bg-neutral-100 flex-shrink-0 relative z-[80]"
+              aria-label="Toggle menu"
+            >
+              {isMobileMenuOpen ? (
+                <svg
+                  className="w-6 h-6 text-neutral-700"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              ) : (
+                <svg
+                  className="w-6 h-6 text-neutral-700"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 6h16M4 12h16M4 18h16"
+                  />
+                </svg>
+              )}
+            </button>
+          </div>
         </nav>
       </header>
+
+      {/* Mobile Menu Overlay - Outside header for full viewport coverage */}
+      {isMobileMenuOpen && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] transition-opacity duration-300 md:hidden"
+            onClick={() => setIsMobileMenuOpen(false)}
+          />
+
+          {/* Mobile Menu Sidebar */}
+          <div
+            className={`fixed top-0 right-0 h-screen w-[85vw] max-w-sm bg-white shadow-2xl z-[70] transform transition-transform duration-300 ease-in-out md:hidden ${
+              isMobileMenuOpen ? "translate-x-0" : "translate-x-full"
+            }`}
+          >
+            <div className="flex flex-col h-full overflow-y-auto">
+              {/* Mobile Menu Header */}
+              <div className="flex items-center justify-between p-4 border-b border-neutral-200">
+                <h2 className="text-lg font-semibold text-neutral-900">Menu</h2>
+                <button
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="p-2 rounded-lg hover:bg-neutral-100"
+                  aria-label="Close menu"
+                >
+                  <svg
+                    className="w-6 h-6 text-neutral-700"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Mobile Search Bar */}
+              <div className="p-4 border-b border-neutral-200">
+                <div ref={searchContainerRef} className="relative">
+                  <div
+                    className={`flex items-center gap-2 rounded-full bg-neutral-100 px-3 py-2.5 text-sm text-neutral-500 ${
+                      searchFocused ? "ring-2 ring-[#FF9AA2]" : ""
+                    }`}
+                  >
+                    <Image
+                      src="/search.svg"
+                      alt="Search"
+                      width={16}
+                      height={16}
+                      className="flex-shrink-0"
+                    />
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      placeholder="Search products..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onFocus={() => setSearchFocused(true)}
+                      onKeyDown={handleKeyDown}
+                      className="w-full bg-transparent outline-none placeholder:text-neutral-400"
+                    />
+                    {loadingSuggestions && (
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-neutral-400"></div>
+                    )}
+                  </div>
+
+                  {searchFocused && (suggestions.length > 0 || autocorrect) && (
+                    <div
+                      ref={suggestionsRef}
+                      className="absolute top-full left-0 right-0 mt-2 bg-white rounded-lg shadow-xl border border-neutral-200 z-[100] max-h-[400px] overflow-y-auto"
+                    >
+                      {autocorrect && (
+                        <div className="px-4 py-2 bg-blue-50 border-b border-blue-100 text-sm">
+                          <span className="text-neutral-600">
+                            Showing results for{" "}
+                          </span>
+                          <span className="text-blue-600 font-semibold">
+                            {autocorrect}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="py-2">
+                        {suggestions.map((suggestion) => (
+                          <button
+                            key={suggestion.id}
+                            onClick={() => {
+                              handleSuggestionClick(suggestion);
+                              setIsMobileMenuOpen(false);
+                            }}
+                            className="w-full px-4 py-3 hover:bg-neutral-50 flex items-center gap-3 text-left transition-colors"
+                          >
+                            {suggestion.image ? (
+                              <Image
+                                src={suggestion.image}
+                                alt={suggestion.name}
+                                width={48}
+                                height={48}
+                                className="w-12 h-12 object-cover rounded"
+                                unoptimized
+                              />
+                            ) : (
+                              <div className="w-12 h-12 bg-neutral-200 rounded flex items-center justify-center">
+                                <Image
+                                  src="/search.svg"
+                                  alt=""
+                                  width={16}
+                                  height={16}
+                                  className="opacity-50"
+                                />
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-neutral-900 truncate">
+                                {suggestion.name}
+                              </div>
+                              <div className="text-xs text-neutral-500">
+                                {suggestion.category} • ${suggestion.price}
+                                {suggestion.type === "combo" && " • Combo"}
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+
+                      {searchQuery.trim() && (
+                        <div className="border-t border-neutral-200 px-4 py-2">
+                          <button
+                            onClick={() => {
+                              handleSearch();
+                              setIsMobileMenuOpen(false);
+                            }}
+                            className="w-full text-center text-sm font-medium text-[#FF9AA2] hover:text-[#FF9AA2]/80"
+                          >
+                            {autocorrect
+                              ? `Search for "${autocorrect}"`
+                              : `Search for "${searchQuery}"`}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Mobile Menu Content */}
+              <div className="flex-1 overflow-y-auto">
+                {/* Products Dropdown */}
+                <div className="border-b border-neutral-200">
+                  <button
+                    onClick={() =>
+                      setMobileCategoryOpen(
+                        mobileCategoryOpen === "products" ? null : "products"
+                      )
+                    }
+                    className="w-full flex items-center justify-between px-4 py-4 text-left font-semibold text-neutral-900 hover:bg-neutral-50 transition-colors"
+                  >
+                    <span>Products</span>
+                    <svg
+                      className={`w-5 h-5 transition-transform ${
+                        mobileCategoryOpen === "products" ? "rotate-180" : ""
+                      }`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 9l-7 7-7-7"
+                      />
+                    </svg>
+                  </button>
+
+                  {mobileCategoryOpen === "products" &&
+                    categories.length > 0 && (
+                      <div className="bg-neutral-50 border-t border-neutral-200">
+                        {categories.map((category) => (
+                          <div
+                            key={category._id}
+                            className="px-4 py-3 border-b border-neutral-200 last:border-b-0"
+                          >
+                            <h3 className="font-semibold text-neutral-900 text-sm mb-2">
+                              {category.name}
+                            </h3>
+                            <div className="space-y-1">
+                              {category.subcategories.map((sub) => (
+                                <Link
+                                  key={sub._id}
+                                  href={`/products?category=${sub._id}`}
+                                  className="block text-sm text-neutral-600 hover:text-[#CF6144] transition-colors py-1.5 pl-4"
+                                  onClick={() => {
+                                    setIsMobileMenuOpen(false);
+                                    setMobileCategoryOpen(null);
+                                  }}
+                                >
+                                  {sub.name}
+                                </Link>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                </div>
+
+                {/* Bulk Orders Dropdown */}
+                <div className="border-b border-neutral-200">
+                  <button
+                    onClick={() => setMobileBulkOpen(!mobileBulkOpen)}
+                    className="w-full flex items-center justify-between px-4 py-4 text-left font-semibold text-neutral-900 hover:bg-neutral-50 transition-colors"
+                  >
+                    <span>Bulk Orders</span>
+                    <svg
+                      className={`w-5 h-5 transition-transform ${
+                        mobileBulkOpen ? "rotate-180" : ""
+                      }`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 9l-7 7-7-7"
+                      />
+                    </svg>
+                  </button>
+
+                  {mobileBulkOpen && (
+                    <div className="bg-neutral-50 border-t border-neutral-200">
+                      <Link
+                        href="/products?bulkOrders=true"
+                        onClick={() => {
+                          setIsMobileMenuOpen(false);
+                          setMobileBulkOpen(false);
+                        }}
+                        className="block px-4 py-3 text-sm text-neutral-700 hover:text-[#CF6144] hover:bg-neutral-100 transition-colors"
+                      >
+                        Explore Bulk Products
+                      </Link>
+                      <Link
+                        href="/contact"
+                        onClick={() => {
+                          setIsMobileMenuOpen(false);
+                          setMobileBulkOpen(false);
+                        }}
+                        className="block px-4 py-3 text-sm text-neutral-700 hover:text-[#CF6144] hover:bg-neutral-100 transition-colors border-t border-neutral-200"
+                      >
+                        Contact for Bulk Orders
+                      </Link>
+                    </div>
+                  )}
+                </div>
+
+                {/* Other Nav Links */}
+                {navLinks.map((link) => (
+                  <Link
+                    key={link.label}
+                    href={link.href}
+                    onClick={(e) => {
+                      handleNavLinkClick(link.href, e);
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="block px-4 py-4 font-semibold text-neutral-900 hover:bg-neutral-50 transition-colors border-b border-neutral-200"
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+
+                {/* User Section */}
+                <div className="border-b border-neutral-200">
+                  {isAuthenticated ? (
+                    <>
+                      <div className="px-4 py-4 border-b border-neutral-200">
+                        <p className="font-semibold text-neutral-900">
+                          Hello {user?.name || "User"}
+                        </p>
+                        <p className="text-sm text-neutral-600 mt-1">
+                          {user?.email}
+                        </p>
+                      </div>
+
+                      <Link
+                        href="/my-profile"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="block px-4 py-3 text-sm text-neutral-700 hover:bg-neutral-50 hover:text-[#CF6144] transition-colors border-b border-neutral-200"
+                      >
+                        My Profile
+                      </Link>
+
+                      <Link
+                        href="/orders"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="block px-4 py-3 text-sm text-neutral-700 hover:bg-neutral-50 hover:text-[#CF6144] transition-colors border-b border-neutral-200"
+                      >
+                        Orders
+                      </Link>
+
+                      <Link
+                        href="/wishlist"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="block px-4 py-3 text-sm text-neutral-700 hover:bg-neutral-50 hover:text-[#CF6144] transition-colors border-b border-neutral-200"
+                      >
+                        Wishlist
+                      </Link>
+
+                      <Link
+                        href="/contact"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="block px-4 py-3 text-sm text-neutral-700 hover:bg-neutral-50 hover:text-[#CF6144] transition-colors border-b border-neutral-200"
+                      >
+                        Contact Us
+                      </Link>
+
+                      <Link
+                        href="/addresses"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="block px-4 py-3 text-sm text-neutral-700 hover:bg-neutral-50 hover:text-[#CF6144] transition-colors border-b border-neutral-200"
+                      >
+                        Saved Addresses
+                      </Link>
+
+                      <Link
+                        href="/terms"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="block px-4 py-3 text-sm text-neutral-700 hover:bg-neutral-50 hover:text-[#CF6144] transition-colors border-b border-neutral-200"
+                      >
+                        Terms & Conditions
+                      </Link>
+
+                      <Link
+                        href="/privacy"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="block px-4 py-3 text-sm text-neutral-700 hover:bg-neutral-50 hover:text-[#CF6144] transition-colors border-b border-neutral-200"
+                      >
+                        Privacy Policy
+                      </Link>
+
+                      <Link
+                        href="/profile"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="block px-4 py-3 text-sm text-neutral-700 hover:bg-neutral-50 hover:text-[#CF6144] transition-colors border-b border-neutral-200"
+                      >
+                        Edit Profile
+                      </Link>
+
+                      <button
+                        onClick={() => {
+                          setIsMobileMenuOpen(false);
+                          handleLogout();
+                        }}
+                        className="w-full text-left px-4 py-3 text-sm text-neutral-700 hover:bg-neutral-50 hover:text-red-600 transition-colors"
+                      >
+                        Logout
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <Link
+                        href="/login"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="block px-4 py-4 font-semibold text-neutral-900 hover:bg-neutral-50 transition-colors border-b border-neutral-200"
+                      >
+                        Login
+                      </Link>
+                      <Link
+                        href="/signup"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="block px-4 py-4 font-semibold text-white bg-brand hover:bg-brand/90 transition-colors text-center mx-4 my-4 rounded-xl shadow-md"
+                      >
+                        Sign Up
+                      </Link>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }
