@@ -66,22 +66,22 @@ export default function FAQSection() {
   }
 
   return (
-    <section id="faqs" className="w-full py-16 md:py-24 bg-white">
+    <section id="faqs" className="w-full py-12 sm:py-16 md:py-24 bg-white">
       <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
         {/* Header */}
-        <div className="text-center mb-12">
-          <h2 className="text-3xl md:text-4xl font-bold text-neutral-800 mb-4 font-dm-sans">
+        <div className="text-center mb-8 sm:mb-12">
+          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-neutral-800 mb-3 sm:mb-4 font-dm-sans">
             Frequently Asked Questions
           </h2>
-          <div className="w-24 h-1 bg-[#CF6144] mx-auto rounded-full" />
+          <div className="w-20 sm:w-24 h-1 bg-[#CF6144] mx-auto rounded-full" />
         </div>
 
         {/* FAQ Items */}
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           {faqs.map((faq, index) => (
             <div
               key={faq._id}
-              className={`rounded-2xl border border-neutral-200 bg-white p-6 transition-all duration-200 ${
+              className={`rounded-xl sm:rounded-2xl border border-neutral-200 bg-white p-4 sm:p-6 transition-all duration-200 ${
                 openIndex === index ? "" : "hover:shadow-sm"
               }`}
               style={
@@ -95,24 +95,24 @@ export default function FAQSection() {
               {/* Question */}
               <button
                 onClick={() => toggleFAQ(index)}
-                className="w-full flex items-center justify-between text-left focus:outline-none"
+                className="w-full flex items-start sm:items-center justify-between text-left focus:outline-none gap-2"
               >
-                <h3 className="text-lg font-semibold text-neutral-800 pr-4">
+                <h3 className="text-base sm:text-lg font-semibold text-neutral-800 pr-2 sm:pr-4 flex-1">
                   {faq.question}
                 </h3>
-                <div className="flex-shrink-0">
+                <div className="flex-shrink-0 mt-1 sm:mt-0">
                   {openIndex === index ? (
-                    <FaChevronUp className="w-5 h-5 text-neutral-400" />
+                    <FaChevronUp className="w-4 h-4 sm:w-5 sm:h-5 text-neutral-400" />
                   ) : (
-                    <FaChevronDown className="w-5 h-5 text-neutral-400" />
+                    <FaChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-neutral-400" />
                   )}
                 </div>
               </button>
 
               {/* Answer */}
               {openIndex === index && (
-                <div className="mt-4 pt-4 border-t border-neutral-100">
-                  <p className="text-base leading-7 text-neutral-700">
+                <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-neutral-100">
+                  <p className="text-sm sm:text-base leading-6 sm:leading-7 text-neutral-700">
                     {faq.answer}
                   </p>
                 </div>

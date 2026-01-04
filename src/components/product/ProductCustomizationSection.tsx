@@ -306,15 +306,15 @@ export default function ProductCustomizationSection({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 sm:space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-[#525252]">
+        <p className="text-xs sm:text-sm font-semibold text-[#525252]">
           Upload your design
         </p>
         {printLocations.length < 3 && (
           <button
             onClick={handleAddPrintLocation}
-            className="text-sm text-[#c86446] hover:underline"
+            className="text-xs sm:text-sm text-[#c86446] hover:underline"
           >
             + Add Print Location
           </button>
@@ -322,7 +322,7 @@ export default function ProductCustomizationSection({
       </div>
 
       {printLocations.length === 0 && (
-        <div className="rounded-2xl border border-[#e5dfd7] p-4 text-center text-sm text-[#6f6f6f]">
+        <div className="rounded-2xl border border-[#e5dfd7] p-3 sm:p-4 text-center text-xs sm:text-sm text-[#6f6f6f]">
           No print locations added. Click &quot;Add Print Location&quot; to get
           started.
         </div>
@@ -344,11 +344,11 @@ export default function ProductCustomizationSection({
         return (
           <div
             key={index}
-            className="space-y-3 rounded-2xl border border-[#e5dfd7] p-4"
+            className="space-y-3 rounded-2xl border border-[#e5dfd7] p-3 sm:p-4"
           >
             <div className="flex items-center justify-between">
               <div className="flex-1 space-y-2">
-                <label className="text-sm text-[#525252]">
+                <label className="text-xs sm:text-sm text-[#525252]">
                   Print Location {index + 1}
                 </label>
                 <PrintLocationDropdown
@@ -359,7 +359,7 @@ export default function ProductCustomizationSection({
               </div>
               <button
                 onClick={() => handleRemovePrintLocation(index)}
-                className="ml-3 rounded-full p-2 text-[#6f6f6f] hover:bg-[#f5f5f5]"
+                className="ml-2 sm:ml-3 rounded-full p-1.5 sm:p-2 text-[#6f6f6f] hover:bg-[#f5f5f5]"
                 title="Remove print location"
               >
                 <svg
@@ -524,7 +524,7 @@ export default function ProductCustomizationSection({
                         ? encodeURIComponent(selectedColor)
                         : "default"
                     }`}
-                    className="flex w-full items-center justify-center rounded-2xl bg-[#c86446] px-6 py-3 text-center text-white text-sm shadow shadow-[#c86446]/30 transition hover:bg-[#ba5839]"
+                    className="flex w-full items-center justify-center rounded-2xl bg-[#c86446] px-4 sm:px-6 py-2.5 sm:py-3 text-center text-white text-xs sm:text-sm shadow shadow-[#c86446]/30 transition hover:bg-[#ba5839]"
                   >
                     Customize your design
                   </Link>
@@ -545,7 +545,7 @@ export default function ProductCustomizationSection({
                   className="hidden"
                   disabled={uploadingImages[index]}
                 />
-                <div className="flex items-center justify-center rounded-2xl border px-4 py-3 text-sm text-[#4a4a4a] transition hover:border-[#c86446] hover:text-[#c86446] disabled:cursor-not-allowed disabled:opacity-50">
+                <div className="flex items-center justify-center rounded-2xl border px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-[#4a4a4a] transition hover:border-[#c86446] hover:text-[#c86446] disabled:cursor-not-allowed disabled:opacity-50">
                   {uploadingImages[index]
                     ? "Uploading..."
                     : "Upload your image"}
@@ -557,11 +557,11 @@ export default function ProductCustomizationSection({
       })}
 
       <div className="space-y-2">
-        <label className="text-sm text-[#525252]">Print Size</label>
+        <label className="text-xs sm:text-sm text-[#525252]">Print Size</label>
         <select
           value={selectedPrintSize}
           onChange={(e) => setSelectedPrintSize(e.target.value)}
-          className="w-full rounded-2xl border border-[#e5dfd7] px-4 py-3 text-sm text-[#4a4a4a]"
+          className="w-full rounded-2xl border border-[#e5dfd7] px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-[#4a4a4a]"
         >
           {printSizes.map((size) => (
             <option key={size} value={size}>

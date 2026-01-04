@@ -304,26 +304,27 @@ function Row({ title, products }: { title: string; products: ProductDoc[] }) {
   const displayed = products.slice(index, index + visible);
 
   return (
-    <section className="mx-auto w-full max-w-6xl px-4 py-8">
-      <div className="mb-6 flex items-center justify-between">
-        <h2 className="text-2xl font-semibold text-[#4a154b]">{title}</h2>
-        <div className="flex gap-2">
+    <section className="mx-auto w-full max-w-6xl px-4 py-6 sm:py-8">
+      <div className="mb-4 sm:mb-6 flex items-center justify-between gap-2">
+        <h2 className="text-xl sm:text-2xl font-semibold text-[#4a154b]">{title}</h2>
+        <div className="flex gap-1 sm:gap-2">
           <button
             aria-label="previous"
             onClick={() => setIndex((i) => Math.max(0, i - 1))}
             disabled={index === 0}
-            className={`rounded-full p-2 transition ${
+            className={`rounded-full p-1.5 sm:p-2 transition ${
               index === 0
                 ? "bg-neutral-200 opacity-50 text-neutral-500"
                 : "bg-[var(--color-arrow)] text-black hover:bg-[var(--color-arrow-hover)] hover:text-white cursor-pointer"
             }`}
           >
             <svg
-              width="16"
-              height="16"
+              width="14"
+              height="14"
               viewBox="0 0 18 11"
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
+              className="sm:w-4 sm:h-4"
             >
               <path
                 d="M5.25 0.75L0.75 5.25M0.75 5.25L5.25 9.75M0.75 5.25H16.75"
@@ -338,18 +339,19 @@ function Row({ title, products }: { title: string; products: ProductDoc[] }) {
             aria-label="next"
             onClick={() => setIndex((i) => Math.min(maxIndex, i + 1))}
             disabled={index >= maxIndex}
-            className={`rounded-full p-2 transition cursor-pointer ${
+            className={`rounded-full p-1.5 sm:p-2 transition cursor-pointer ${
               index >= maxIndex
                 ? "bg-neutral-200 opacity-50 text-neutral-500"
                 : "bg-[var(--color-arrow)] text-black hover:bg-[var(--color-arrow-hover)] hover:text-white"
             }`}
           >
             <svg
-              width="16"
-              height="16"
+              width="14"
+              height="14"
               viewBox="0 0 18 11"
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
+              className="sm:w-4 sm:h-4"
             >
               <path
                 d="M12.25 0.75L16.75 5.25M16.75 5.25L12.25 9.75M16.75 5.25H0.75"
@@ -362,7 +364,7 @@ function Row({ title, products }: { title: string; products: ProductDoc[] }) {
           </button>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:gap-6 md:grid-cols-4">
         {displayed.map((p) => (
           <ProductCard
             key={`${p._id}-${p.colorKey || "default"}`}
@@ -493,17 +495,17 @@ export default function ProductShowcase() {
 
   return (
     <div>
-      <section className="mx-auto w-full max-w-6xl px-4 py-12">
-        <h2 className="mb-6 text-center text-2xl font-semibold text-[#4a154b] underline decoration-2 underline-offset-4">
+      <section className="mx-auto w-full max-w-6xl px-4 py-8 sm:py-12">
+        <h2 className="mb-4 sm:mb-6 text-center text-xl sm:text-2xl font-semibold text-[#4a154b] underline decoration-2 underline-offset-4">
           Our Products
         </h2>
-        <div className="mb-8 flex items-center justify-between">
-          <div className="flex gap-6 text-sm">
+        <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+          <div className="flex gap-3 sm:gap-4 md:gap-6 text-xs sm:text-sm overflow-x-auto pb-2 sm:pb-0 scrollbar-hide justify-center">
           {tabs.map((t) => (
             <button
               key={t.key}
               onClick={() => setActiveTab(t.key)}
-              className={`font-medium transition cursor-pointer ${
+              className={`font-medium transition cursor-pointer whitespace-nowrap ${
                 activeTab === t.key
                   ? "text-neutral-900 underline decoration-2 underline-offset-4"
                   : "text-neutral-600 hover:text-neutral-900"
@@ -515,20 +517,21 @@ export default function ProductShowcase() {
           </div>
           <Link
             href="/products"
-            className="text-sm font-medium text-neutral-900 hover:text-neutral-600 transition"
+            className="text-xs sm:text-sm font-medium text-neutral-900 hover:text-neutral-600 transition text-center sm:text-left"
           >
-            <div className="flex items-center gap-2 underline decoration-2 underline-offset-4">
+            <div className="flex items-center justify-center sm:justify-start gap-2 underline decoration-2 underline-offset-4">
             EXPLORE ALL
             <Image
               src="/right.svg"
               alt="arrow right"
-              width={16}
-              height={16}
+              width={14}
+              height={14}
+              className="sm:w-4 sm:h-4"
             />
             </div>
           </Link>
         </div>
-        <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:gap-6 md:grid-cols-4">
           {tabProducts.slice(0, 4).map((p) => (
             <ProductCard
               key={`${p._id}-${p.colorKey || "default"}`}

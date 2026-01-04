@@ -2,10 +2,7 @@
 
 import { useMemo, useState, useRef, useCallback, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import {
-  DEFAULT_BOUNDING_BOXES,
-  SlotKey,
-} from "@/constants/customization";
+import { DEFAULT_BOUNDING_BOXES, SlotKey } from "@/constants/customization";
 import { toast } from "sonner";
 import {
   saveDesign,
@@ -17,6 +14,7 @@ import {
 import ProductPreview from "./ProductPreview";
 import ElementControls from "./ElementControls";
 import ElementPanel from "./ElementPanel";
+import ImageEditPanel from "./ImageEditPanel";
 import type {
   ProductData,
   ElementType,
@@ -219,6 +217,18 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
     centerX: 0,
     centerY: 0,
   });
+  const [pinchStart, setPinchStart] = useState<{
+    distance: number;
+    angle: number;
+    initialWidth: number;
+    initialHeight: number;
+    initialRotation: number;
+    centerX: number;
+    centerY: number;
+  } | null>(null);
+  const [showImageEdit, setShowImageEdit] = useState(false);
+  const [editingImageElement, setEditingImageElement] =
+    useState<DesignElement | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const boundingBoxRef = useRef<HTMLDivElement>(null);
 
@@ -333,23 +343,70 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
     updateElement(id, { zIndex: newZIndex });
   };
 
-  const handleMouseDown = (e: React.MouseEvent, elementId: string) => {
+  const handleMouseDown = (
+    e: React.MouseEvent | React.TouchEvent,
+    elementId: string
+  ) => {
     e.stopPropagation();
     e.preventDefault();
+
+    // Check if it's a touch event with 2 touches (pinch gesture)
+    if ("touches" in e && e.touches.length === 2) {
+      const element = currentElements.find((el) => el.id === elementId);
+      if (!element || !boundingBoxRef.current) return;
+
+      setSelectedElementId(elementId);
+      setIsDragging(false);
+      setIsResizing(false);
+      setIsRotating(false);
+
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      const distance = Math.hypot(
+        touch2.clientX - touch1.clientX,
+        touch2.clientY - touch1.clientY
+      );
+      const angle =
+        Math.atan2(
+          touch2.clientY - touch1.clientY,
+          touch2.clientX - touch1.clientX
+        ) *
+        (180 / Math.PI);
+
+      const rect = boundingBoxRef.current.getBoundingClientRect();
+      const centerX = (touch1.clientX + touch2.clientX) / 2;
+      const centerY = (touch1.clientY + touch2.clientY) / 2;
+
+      setPinchStart({
+        distance,
+        angle,
+        initialWidth: element.width,
+        initialHeight: element.height,
+        initialRotation: element.rotation || 0,
+        centerX: centerX - rect.left,
+        centerY: centerY - rect.top,
+      });
+      return;
+    }
+
+    // Single touch or mouse - drag to move
     setSelectedElementId(elementId);
     const element = currentElements.find((el) => el.id === elementId);
     if (element) {
       setActivePanel(element.type);
     }
     setIsDragging(true);
+    setPinchStart(null);
     if (boundingBoxRef.current) {
       const rect = boundingBoxRef.current.getBoundingClientRect();
       const element = currentElements.find((el) => el.id === elementId);
       const elementX = (element?.x ?? 0) * (rect.width / 100);
       const elementY = (element?.y ?? 0) * (rect.height / 100);
+      const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+      const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
       setDragStart({
-        x: e.clientX - rect.left - elementX,
-        y: e.clientY - rect.top - elementY,
+        x: clientX - rect.left - elementX,
+        y: clientY - rect.top - elementY,
       });
     }
   };
@@ -375,17 +432,78 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
     }
   };
 
-  const handleMouseMove = useCallback(
-    (e: MouseEvent) => {
+  const handleMove = useCallback(
+    (clientX: number, clientY: number, touches?: TouchList) => {
       if (!boundingBoxRef.current) return;
       const rect = boundingBoxRef.current.getBoundingClientRect();
+
+      // Handle pinch gesture (2 touches) for zoom and rotate
+      if (pinchStart && touches && touches.length === 2 && selectedElementId) {
+        const touch1 = touches[0];
+        const touch2 = touches[1];
+        const currentDistance = Math.hypot(
+          touch2.clientX - touch1.clientX,
+          touch2.clientY - touch1.clientY
+        );
+        const currentAngle =
+          Math.atan2(
+            touch2.clientY - touch1.clientY,
+            touch2.clientX - touch1.clientX
+          ) *
+          (180 / Math.PI);
+
+        // Calculate zoom (scale based on distance change)
+        const scale = currentDistance / pinchStart.distance;
+        const newWidth = Math.max(
+          5,
+          Math.min(95, pinchStart.initialWidth * scale)
+        );
+        const newHeight = Math.max(
+          5,
+          Math.min(95, pinchStart.initialHeight * scale)
+        );
+
+        // Calculate rotation (angle change)
+        const angleDelta = currentAngle - pinchStart.angle;
+        const newRotation = pinchStart.initialRotation + angleDelta;
+
+        // Calculate new position to keep center point fixed
+        const centerX = (touch1.clientX + touch2.clientX) / 2;
+        const centerY = (touch1.clientY + touch2.clientY) / 2;
+        const centerXPercent = ((centerX - rect.left) / rect.width) * 100;
+        const centerYPercent = ((centerY - rect.top) / rect.height) * 100;
+
+        const element = currentElements.find(
+          (el) => el.id === selectedElementId
+        );
+        if (element) {
+          const oldCenterX = element.x + element.width / 2;
+          const oldCenterY = element.y + element.height / 2;
+          const newX = Math.max(
+            0,
+            Math.min(100 - newWidth, centerXPercent - newWidth / 2)
+          );
+          const newY = Math.max(
+            0,
+            Math.min(100 - newHeight, centerYPercent - newHeight / 2)
+          );
+
+          updateElement(selectedElementId, {
+            width: newWidth,
+            height: newHeight,
+            rotation: newRotation,
+            x: newX,
+            y: newY,
+          });
+        }
+        return;
+      }
 
       if (isRotating && selectedElementId) {
         const centerX = rotateStart.centerX;
         const centerY = rotateStart.centerY;
         const currentAngle =
-          Math.atan2(e.clientY - centerY, e.clientX - centerX) *
-          (180 / Math.PI);
+          Math.atan2(clientY - centerY, clientX - centerX) * (180 / Math.PI);
         const deltaAngle = currentAngle - rotateStart.angle;
         updateElement(selectedElementId, {
           rotation: rotateStart.initialRotation + deltaAngle,
@@ -394,8 +512,8 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
       }
 
       if (isResizing && selectedElementId && resizeDirection) {
-        const deltaX = ((e.clientX - resizeStart.x) / rect.width) * 100;
-        const deltaY = ((e.clientY - resizeStart.y) / rect.height) * 100;
+        const deltaX = ((clientX - resizeStart.x) / rect.width) * 100;
+        const deltaY = ((clientY - resizeStart.y) / rect.height) * 100;
 
         let newWidth = resizeStart.width;
         let newHeight = resizeStart.height;
@@ -457,8 +575,8 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
       }
 
       if (isDragging && selectedElementId) {
-        const x = ((e.clientX - rect.left - dragStart.x) / rect.width) * 100;
-        const y = ((e.clientY - rect.top - dragStart.y) / rect.height) * 100;
+        const x = ((clientX - rect.left - dragStart.x) / rect.width) * 100;
+        const y = ((clientY - rect.top - dragStart.y) / rect.height) * 100;
         updateElement(selectedElementId, {
           x: Math.max(0, Math.min(100 - (selectedElement?.width ?? 30), x)),
           y: Math.max(0, Math.min(100 - (selectedElement?.height ?? 30), y)),
@@ -475,7 +593,40 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
       rotateStart,
       resizeDirection,
       selectedElement,
+      pinchStart,
+      currentElements,
+      updateElement,
     ]
+  );
+
+  const handleMouseMove = useCallback(
+    (e: MouseEvent) => {
+      handleMove(e.clientX, e.clientY);
+    },
+    [handleMove]
+  );
+
+  const handleTouchMove = useCallback(
+    (e: TouchEvent) => {
+      // Only prevent default if touching the preview area
+      const target = e.target as HTMLElement;
+      const isPreviewArea =
+        previewRef.current?.contains(target) ||
+        boundingBoxRef.current?.contains(target);
+
+      if (isPreviewArea) {
+        e.preventDefault();
+        if (e.touches.length === 2) {
+          // Pinch gesture - use center point
+          const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+          const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+          handleMove(centerX, centerY, e.touches);
+        } else if (e.touches.length === 1) {
+          handleMove(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      }
+    },
+    [handleMove]
   );
 
   const handleMouseUp = useCallback(() => {
@@ -483,18 +634,27 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
     setIsResizing(false);
     setIsRotating(false);
     setResizeDirection(null);
+    setPinchStart(null);
   }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    handleMouseUp();
+  }, [handleMouseUp]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       window.addEventListener("mousemove", handleMouseMove);
       window.addEventListener("mouseup", handleMouseUp);
+      window.addEventListener("touchmove", handleTouchMove, { passive: false });
+      window.addEventListener("touchend", handleTouchEnd);
       return () => {
         window.removeEventListener("mousemove", handleMouseMove);
         window.removeEventListener("mouseup", handleMouseUp);
+        window.removeEventListener("touchmove", handleTouchMove);
+        window.removeEventListener("touchend", handleTouchEnd);
       };
     }
-  }, [handleMouseMove, handleMouseUp]);
+  }, [handleMouseMove, handleMouseUp, handleTouchMove, handleTouchEnd]);
 
   useEffect(() => {
     const handleClickOnProductImage = (e: MouseEvent) => {
@@ -548,7 +708,7 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
   const handleZoomReset = () => setZoom(1);
 
   const handleResize = (
-    e: React.MouseEvent,
+    e: React.MouseEvent | React.TouchEvent,
     elementId: string,
     direction: "se" | "sw" | "ne" | "nw" | "n" | "s" | "e" | "w"
   ) => {
@@ -558,9 +718,11 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
     if (!element || !boundingBoxRef.current) return;
     setIsResizing(true);
     setResizeDirection(direction);
+    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
     setResizeStart({
-      x: e.clientX,
-      y: e.clientY,
+      x: clientX,
+      y: clientY,
       width: element.width,
       height: element.height,
       elementX: element.x,
@@ -568,7 +730,10 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
     });
   };
 
-  const handleRotate = (e: React.MouseEvent, elementId: string) => {
+  const handleRotate = (
+    e: React.MouseEvent | React.TouchEvent,
+    elementId: string
+  ) => {
     e.stopPropagation();
     e.preventDefault();
     const element = currentElements.find((el) => el.id === elementId);
@@ -579,8 +744,10 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
       rect.left + (rect.width * (element.x + element.width / 2)) / 100;
     const centerY =
       rect.top + (rect.height * (element.y + element.height / 2)) / 100;
+    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
     const initialAngle =
-      Math.atan2(e.clientY - centerY, e.clientX - centerX) * (180 / Math.PI);
+      Math.atan2(clientY - centerY, clientX - centerX) * (180 / Math.PI);
     setRotateStart({
       angle: initialAngle,
       initialRotation: element.rotation || 0,
@@ -611,10 +778,79 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
         },
       }));
       setSelectedElementId(newElement.id);
-      setActivePanel("logo");
       toast.success("Image uploaded!");
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleImageClick = (element: DesignElement) => {
+    setEditingImageElement(element);
+    setShowImageEdit(true);
+    setActivePanel(null);
+  };
+
+  const handleImageDelete = () => {
+    if (editingImageElement) {
+      removeElement(editingImageElement.id);
+      setShowImageEdit(false);
+      setEditingImageElement(null);
+    }
+  };
+
+  const handleImageReplace = (file: File) => {
+    if (!editingImageElement) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      updateElement(editingImageElement.id, {
+        imageData: reader.result as string,
+      });
+      toast.success("Image replaced!");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleImageCrop = (cropData: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }) => {
+    // Crop implementation - update position/size
+    if (editingImageElement) {
+      updateElement(editingImageElement.id, {
+        x: cropData.x,
+        y: cropData.y,
+        width: cropData.width,
+        height: cropData.height,
+      });
+      toast.success("Image cropped!");
+    }
+  };
+
+  const handleImageSizeChange = (size: number) => {
+    if (editingImageElement) {
+      // Maintain aspect ratio
+      const aspectRatio =
+        editingImageElement.height / editingImageElement.width;
+      const newWidth = size;
+      const newHeight = size * aspectRatio;
+
+      // Ensure it doesn't exceed bounds
+      const maxSize = 95;
+      const finalWidth = Math.min(newWidth, maxSize);
+      const finalHeight = Math.min(newHeight, maxSize);
+
+      updateElement(editingImageElement.id, {
+        width: finalWidth,
+        height: finalHeight,
+      });
+    }
+  };
+
+  const handleImageRotate = (rotation: number) => {
+    if (editingImageElement) {
+      updateElement(editingImageElement.id, { rotation });
+    }
   };
 
   const handleSave = () => {
@@ -654,9 +890,7 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
     toast.success("Design saved!");
     const colorParam =
       selectedColor !== "Gold" ? encodeURIComponent(selectedColor) : "default";
-    router.push(
-      `/product/${product._id}?customized=true&color=${colorParam}`
-    );
+    router.push(`/product/${product._id}?customized=true&color=${colorParam}`);
   };
 
   if (!slotEnabled) {
@@ -668,7 +902,7 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_550px] min-h-full">
+    <div className="grid gap-4 sm:gap-6 lg:grid-cols-[1fr_550px] min-h-full">
       {/* Left: Product Preview */}
       <ProductPreview
         productId={product._id}
@@ -686,7 +920,13 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
         onZoomOut={handleZoomOut}
         onZoomReset={handleZoomReset}
         onElementMouseDown={handleMouseDown}
-        onElementResize={handleResize as (e: React.MouseEvent, elementId: string, direction: string) => void}
+        onElementResize={
+          handleResize as (
+            e: React.MouseEvent | React.TouchEvent,
+            elementId: string,
+            direction: string
+          ) => void
+        }
         onElementRotate={handleRotate}
         onElementDelete={removeElement}
         onBoundingBoxClick={handleBoundingBoxClick}
@@ -695,39 +935,72 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
       />
 
       {/* Right: Controls */}
-      <div className="space-y-6 lg:pt-12">
-        {!activePanel && (
-          <ElementControls
-            onAddElement={addElement}
-            onUploadImage={handleUploadImage}
-            currentElements={currentElements}
-          />
+      <div className="space-y-4 sm:space-y-6 lg:pt-12">
+        {/* Mobile: Image Edit Panel */}
+        {showImageEdit && editingImageElement ? (
+          <div className="md:hidden">
+            <ImageEditPanel
+              element={editingImageElement}
+              onDelete={handleImageDelete}
+              onReplace={handleImageReplace}
+              onCrop={handleImageCrop}
+              onSizeChange={handleImageSizeChange}
+              onRotate={handleImageRotate}
+              onCancel={() => {
+                setShowImageEdit(false);
+                setEditingImageElement(null);
+              }}
+              onDone={() => {
+                setShowImageEdit(false);
+                setEditingImageElement(null);
+              }}
+            />
+          </div>
+        ) : !activePanel ? (
+          <>
+            <ElementControls
+              onAddElement={addElement}
+              onUploadImage={handleUploadImage}
+              currentElements={currentElements}
+              onImageClick={handleImageClick}
+            />
+            {/* Save and Proceed Button */}
+            <button
+              onClick={handleSave}
+              className="w-full rounded-lg bg-[var(--color-button)] px-4 sm:px-6 py-3 sm:py-4 text-center text-white text-xs sm:text-sm font-semibold shadow shadow-[var(--color-button)]/30 transition hover:bg-[var(--color-button-hover)] active:bg-[var(--color-button-hover)] touch-manipulation"
+            >
+              Save and Proceed
+            </button>
+          </>
+        ) : (
+          <>
+            {selectedElement && (
+              <ElementPanel
+                element={selectedElement}
+                elementType={activePanel}
+                selectedColor={selectedColor}
+                colorEntries={colorEntries}
+                onBack={() => {
+                  setActivePanel(null);
+                  setSelectedElementId(null);
+                }}
+                onUpdate={(updates) =>
+                  updateElement(selectedElement.id, updates)
+                }
+                onBringToFront={() => bringToFront(selectedElement.id)}
+                onSendToBack={() => sendToBack(selectedElement.id)}
+                onRemove={() => removeElement(selectedElement.id)}
+              />
+            )}
+            {/* Save and Proceed Button */}
+            <button
+              onClick={handleSave}
+              className="w-full rounded-lg bg-[var(--color-button)] px-4 sm:px-6 py-3 sm:py-4 text-center text-white text-xs sm:text-sm font-semibold shadow shadow-[var(--color-button)]/30 transition hover:bg-[var(--color-button-hover)] active:bg-[var(--color-button-hover)] touch-manipulation"
+            >
+              Save and Proceed
+            </button>
+          </>
         )}
-
-        {activePanel && selectedElement && (
-          <ElementPanel
-            element={selectedElement}
-            elementType={activePanel}
-            selectedColor={selectedColor}
-            colorEntries={colorEntries}
-            onBack={() => {
-              setActivePanel(null);
-              setSelectedElementId(null);
-            }}
-            onUpdate={(updates) => updateElement(selectedElement.id, updates)}
-            onBringToFront={() => bringToFront(selectedElement.id)}
-            onSendToBack={() => sendToBack(selectedElement.id)}
-            onRemove={() => removeElement(selectedElement.id)}
-          />
-        )}
-
-        {/* Save and Proceed Button */}
-        <button
-          onClick={handleSave}
-          className="w-full rounded-lg bg-[var(--color-button)] px-6 py-4 text-center text-white text-sm font-semibold shadow shadow-[var(--color-button)]/30 transition hover:bg-[var(--color-button-hover)]"
-        >
-          Save and Proceed
-        </button>
       </div>
     </div>
   );

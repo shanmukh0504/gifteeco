@@ -24,6 +24,7 @@ function ProductsPageContent() {
   const [loading, setLoading] = useState(true);
   const [correctedQuery, setCorrectedQuery] = useState<string | null>(null);
   const [originalQuery, setOriginalQuery] = useState<string | null>(null);
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
 
   useEffect(() => {
     // Set loading immediately when params change
@@ -138,19 +139,61 @@ function ProductsPageContent() {
     }
   };
 
+  // Prevent body scroll when mobile filters are open
+  useEffect(() => {
+    if (isFiltersOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isFiltersOpen]);
+
   return (
     <div className="min-h-screen bg-neutral-50">
-      <div className="mx-auto w-full max-w-7xl px-4 py-12">
-        <div className="flex gap-8">
-          <div className="flex-shrink-0">
+      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:py-8 md:py-12">
+        {/* Mobile Filter Button and Sort - Top Bar */}
+        <div className="mb-4 flex items-center justify-between gap-4 md:hidden">
+          <button
+            onClick={() => setIsFiltersOpen(true)}
+            className="flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 transition-colors"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
+              />
+            </svg>
+            Filters
+          </button>
+          <SortBy />
+        </div>
+
+        <div className="flex gap-4 md:gap-8">
+          {/* Desktop Sidebar - Hidden on Mobile */}
+          <div className="hidden md:block flex-shrink-0">
             <FiltersSidebar />
           </div>
-          <div className="flex-1">
-            <div className="mb-6 flex justify-end">
+
+          {/* Main Content */}
+          <div className="flex-1 min-w-0">
+            {/* Desktop Sort - Hidden on Mobile */}
+            <div className="mb-6 hidden md:flex justify-end">
               <SortBy />
             </div>
+
+            {/* Corrected Query Message */}
             {correctedQuery && originalQuery && (
-              <div className="mb-4 px-4 py-3 bg-blue-50 border border-blue-100 rounded-lg text-sm">
+              <div className="mb-4 px-3 sm:px-4 py-2 sm:py-3 bg-blue-50 border border-blue-100 rounded-lg text-xs sm:text-sm">
                 <span className="text-neutral-700">
                   Showing results for{" "}
                   <span className="font-semibold text-blue-600">
@@ -175,10 +218,53 @@ function ProductsPageContent() {
                 </span>
               </div>
             )}
+
             <ProductsGrid products={products} loading={loading} />
           </div>
         </div>
       </div>
+
+      {/* Mobile Filters Drawer */}
+      {isFiltersOpen && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[40] md:hidden"
+            onClick={() => setIsFiltersOpen(false)}
+          />
+
+          {/* Drawer */}
+          <div className="fixed top-0 left-0 h-screen w-[85vw] max-w-sm bg-white shadow-2xl z-[50] transform transition-transform duration-300 ease-in-out md:hidden overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-neutral-200 px-4 py-4 flex items-center justify-between z-10">
+              <h2 className="text-lg font-semibold text-neutral-900">
+                Filters
+              </h2>
+              <button
+                onClick={() => setIsFiltersOpen(false)}
+                className="p-2 rounded-lg hover:bg-neutral-100 transition-colors"
+                aria-label="Close filters"
+              >
+                <svg
+                  className="w-6 h-6 text-neutral-700"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+            <div className="p-4">
+              <FiltersSidebar />
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -188,16 +274,21 @@ export default function ProductsPage() {
     <Suspense
       fallback={
         <div className="min-h-screen bg-neutral-50">
-          <div className="mx-auto w-full max-w-7xl px-4 py-12">
-            <div className="flex gap-8">
-              <div className="flex-shrink-0 w-64">
+          <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:py-8 md:py-12">
+            {/* Mobile top bar skeleton */}
+            <div className="mb-4 flex items-center justify-between gap-4 md:hidden">
+              <div className="h-10 w-24 bg-neutral-200 animate-pulse rounded-lg"></div>
+              <div className="h-10 w-32 bg-neutral-200 animate-pulse rounded-lg"></div>
+            </div>
+            <div className="flex gap-4 md:gap-8">
+              <div className="hidden md:block flex-shrink-0 w-64">
                 <div className="h-96 bg-neutral-200 animate-pulse rounded-lg"></div>
               </div>
               <div className="flex-1">
-                <div className="mb-6 flex justify-end">
+                <div className="mb-6 hidden md:flex justify-end">
                   <div className="h-10 w-32 bg-neutral-200 animate-pulse rounded-lg"></div>
                 </div>
-                <div className="grid grid-cols-2 gap-6 md:grid-cols-3 lg:grid-cols-4">
+                <div className="grid grid-cols-2 gap-3 sm:gap-4 md:gap-6 md:grid-cols-3 lg:grid-cols-4">
                   {Array.from({ length: 8 }).map((_, i) => (
                     <div key={i} className="space-y-3">
                       <div className="aspect-[4/5] bg-neutral-200 animate-pulse rounded-2xl"></div>

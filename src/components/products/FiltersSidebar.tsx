@@ -298,7 +298,7 @@ function FiltersSidebar({ onFiltersChange }: FiltersSidebarProps) {
 
   if (loading || !filterOptions) {
     return (
-      <div className="w-64 space-y-4">
+      <div className="w-full md:w-64 space-y-4">
         <div className="animate-pulse space-y-4">
           <div className="h-10 bg-neutral-200 rounded"></div>
           <div className="h-32 bg-neutral-200 rounded"></div>
@@ -309,7 +309,7 @@ function FiltersSidebar({ onFiltersChange }: FiltersSidebarProps) {
   }
 
   return (
-    <div className="w-64 space-y-0 pr-6">
+    <div className="w-full md:w-64 space-y-0 md:pr-6">
       <div className="space-y-2 border-b border-neutral-200 pb-4">
         <div className="flex items-center justify-between">
           <label className="block text-sm font-medium text-neutral-700 uppercase">

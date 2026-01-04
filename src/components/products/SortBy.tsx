@@ -32,11 +32,13 @@ const SortBy = memo(function SortBy() {
 
   return (
     <div className="flex items-center gap-2">
-      <label className="text-sm font-medium text-neutral-700">Sort by:</label>
+      <label className="hidden sm:inline text-sm font-medium text-neutral-700">
+        Sort by:
+      </label>
       <select
         value={isMounted ? sortValue : "default"}
         onChange={handleChange}
-        className="rounded-lg border border-neutral-300 px-4 py-2 text-sm focus:border-[#FF9AA2] focus:outline-none focus:ring-2 focus:ring-[#FF9AA2]"
+        className="rounded-lg border border-neutral-300 px-3 sm:px-4 py-2 text-xs sm:text-sm focus:border-[#FF9AA2] focus:outline-none focus:ring-2 focus:ring-[#FF9AA2]"
       >
         <option value="default">Default</option>
         <option value="price-low-high">Price: Low to High</option>

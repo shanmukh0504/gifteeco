@@ -21,13 +21,13 @@ interface ProductPreviewProps {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onZoomReset: () => void;
-  onElementMouseDown: (e: React.MouseEvent, elementId: string) => void;
+  onElementMouseDown: (e: React.MouseEvent | React.TouchEvent, elementId: string) => void;
   onElementResize: (
-    e: React.MouseEvent,
+    e: React.MouseEvent | React.TouchEvent,
     elementId: string,
     direction: string
   ) => void;
-  onElementRotate: (e: React.MouseEvent, elementId: string) => void;
+  onElementRotate: (e: React.MouseEvent | React.TouchEvent, elementId: string) => void;
   onElementDelete: (elementId: string) => void;
   onBoundingBoxClick: (e: React.MouseEvent) => void;
   previewRef: React.RefObject<HTMLDivElement>;
@@ -58,20 +58,20 @@ export default function ProductPreview({
   boundingBoxRef,
 }: ProductPreviewProps) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 sm:space-y-4">
       <Link
         href={`/product/${productId}?color=${
           selectedColor !== "Gold"
             ? encodeURIComponent(selectedColor)
             : "default"
         }`}
-        className="flex items-center gap-2 text-sm text-neutral-600 hover:text-neutral-900"
+        className="flex items-center gap-2 text-xs sm:text-sm text-neutral-600 hover:text-neutral-900"
       >
-        <Image src="/left.svg" alt="Back" width={20} height={20} />
+        <Image src="/left.svg" alt="Back" width={20} height={20} className="w-4 h-4 sm:w-5 sm:h-5" />
         Back to product
       </Link>
 
-      <div className="relative overflow-hidden rounded-3xl border border-neutral-100 bg-white shadow-lg">
+      <div className="relative overflow-hidden rounded-xl sm:rounded-2xl md:rounded-3xl border border-neutral-100 bg-white shadow-lg">
         {mockup ? (
           <div
             ref={previewRef}
@@ -92,7 +92,14 @@ export default function ProductPreview({
             <div
               ref={boundingBoxRef}
               onClick={onBoundingBoxClick}
-              className="absolute bounding-box-container border-2 border-dashed border-neutral-400/50 pointer-events-auto"
+              onTouchStart={(e) => {
+                // Only prevent default for touch events on the preview area
+                const target = e.target as HTMLElement;
+                if (target.closest("[data-element-container]") || target === e.currentTarget) {
+                  // Allow default behavior for scrolling outside
+                }
+              }}
+              className="absolute bounding-box-container border-2 border-dashed border-neutral-400/50 pointer-events-auto touch-manipulation"
               style={{
                 left: `${box.x * 100}%`,
                 top: `${box.y * 100}%`,
@@ -120,6 +127,12 @@ export default function ProductPreview({
                       onElementMouseDown(e, element.id);
                     }
                   }}
+                  onTouchStart={(e) => {
+                    if (!isResizing && !isRotating) {
+                      // Pass the actual touch event for pinch detection
+                      onElementMouseDown(e as unknown as React.MouseEvent, element.id);
+                    }
+                  }}
                   onResize={(e, direction) =>
                     onElementResize(e, element.id, direction)
                   }
@@ -130,27 +143,30 @@ export default function ProductPreview({
             </div>
           </div>
         ) : (
-          <div className="flex h-[480px] items-center justify-center text-neutral-400">
+          <div className="flex h-[300px] sm:h-[400px] md:h-[480px] items-center justify-center text-xs sm:text-sm text-neutral-400 px-4 text-center">
             Add a mockup image in the admin panel to improve preview.
           </div>
         )}
         {/* Zoom controls overlaid on image - bottom right */}
-        <div className="absolute bottom-4 right-4 flex flex-col gap-2">
+        <div className="absolute bottom-2 right-2 sm:bottom-4 sm:right-4 flex flex-col gap-1.5 sm:gap-2">
           <button
             onClick={onZoomIn}
-            className="w-10 h-10 bg-white border border-neutral-200 rounded flex items-center justify-center text-lg font-medium hover:bg-neutral-50 shadow-sm"
+            className="w-8 h-8 sm:w-10 sm:h-10 bg-white border border-neutral-200 rounded flex items-center justify-center text-base sm:text-lg font-medium hover:bg-neutral-50 active:bg-neutral-100 shadow-sm touch-manipulation"
+            aria-label="Zoom in"
           >
             +
           </button>
           <button
             onClick={onZoomOut}
-            className="w-10 h-10 bg-white border border-neutral-200 rounded flex items-center justify-center text-lg font-medium hover:bg-neutral-50 shadow-sm"
+            className="w-8 h-8 sm:w-10 sm:h-10 bg-white border border-neutral-200 rounded flex items-center justify-center text-base sm:text-lg font-medium hover:bg-neutral-50 active:bg-neutral-100 shadow-sm touch-manipulation"
+            aria-label="Zoom out"
           >
             −
           </button>
           <button
             onClick={onZoomReset}
-            className="w-10 h-10 bg-white border border-neutral-200 rounded flex items-center justify-center hover:bg-neutral-50 shadow-sm"
+            className="w-8 h-8 sm:w-10 sm:h-10 bg-white border border-neutral-200 rounded flex items-center justify-center hover:bg-neutral-50 active:bg-neutral-100 shadow-sm touch-manipulation"
+            aria-label="Reset zoom"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
