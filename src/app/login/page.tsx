@@ -95,7 +95,7 @@ export default function LoginPage() {
             </Link>
           </div>
 
-          <Button type="submit" className="w-full" isLoading={loading}>
+          <Button type="submit" className="w-full cursor-pointer" isLoading={loading}>
             Login
           </Button>
         </form>

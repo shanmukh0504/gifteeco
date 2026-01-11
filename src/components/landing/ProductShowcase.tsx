@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import useWishlistStore from "@/store/useWishlistStore";
 import useCartStore from "@/store/useCartStore";
 import useAuthStore from "@/store/useAuthStore";
@@ -203,7 +204,14 @@ function ProductCard({ product }: { product: ProductDoc }) {
         onClose={() => setShowAuthModal(false)}
         initialMode="login"
       />
-      <div className="group relative">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-50px" }}
+        transition={{ duration: 0.4 }}
+        whileHover={{ y: -5 }}
+        className="group relative"
+      >
         <Link
           href={`/product/${product._id}${
             product.colorKey && product.colorKey !== "Gold"
@@ -216,19 +224,27 @@ function ProductCard({ product }: { product: ProductDoc }) {
         >
           <div className="relative aspect-[4/5] w-full overflow-hidden rounded-2xl bg-white">
             {img ? (
-              <Image
-                src={img}
-                alt={product.name}
-                fill
-                className="object-cover transition group-hover:scale-[1.03]"
-              />
+              <motion.div
+                whileHover={{ scale: 1.05 }}
+                transition={{ duration: 0.3 }}
+                className="relative h-full w-full"
+              >
+                <Image
+                  src={img}
+                  alt={product.name}
+                  fill
+                  className="object-cover"
+                />
+              </motion.div>
             ) : (
               <div className="flex h-full items-center justify-center text-xs text-neutral-400">
                 No image
               </div>
             )}
-            <button
+            <motion.button
               onClick={handleWishlistClick}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
               className={`absolute right-2 top-2 z-10 rounded-lg bg-white/95 p-2 shadow-lg backdrop-blur-sm transition hover:bg-white ${
                 isWishlisted
                   ? "opacity-100 shadow-pink-200"
@@ -255,7 +271,7 @@ function ProductCard({ product }: { product: ProductDoc }) {
                   strokeLinejoin="round"
                 />
               </svg>
-            </button>
+            </motion.button>
           </div>
           <div className="mt-3 space-y-1">
             <div className="truncate text-sm font-semibold text-neutral-900">
@@ -265,8 +281,10 @@ function ProductCard({ product }: { product: ProductDoc }) {
               <div className="text-sm text-neutral-900">
                 ₹{Math.round(product.price)}
               </div>
-              <button
+              <motion.button
                 onClick={handleCartClick}
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
                 className={`rounded-lg p-2 transition ${
                   cartQuantity > 0
                     ? "bg-[var(--color-cart-active)] hover:bg-[var(--color-cart-active-hover)]"
@@ -288,11 +306,11 @@ function ProductCard({ product }: { product: ProductDoc }) {
                     fill={cartQuantity > 0 ? "#FFFFFF" : "#1C1B1F"}
                   />
                 </svg>
-              </button>
+              </motion.button>
             </div>
           </div>
         </Link>
-      </div>
+      </motion.div>
     </>
   );
 }
@@ -304,11 +322,19 @@ function Row({ title, products }: { title: string; products: ProductDoc[] }) {
   const displayed = products.slice(index, index + visible);
 
   return (
-    <section className="mx-auto w-full max-w-6xl px-4 py-6 sm:py-8">
+    <motion.section
+      initial={{ opacity: 0 }}
+      whileInView={{ opacity: 1 }}
+      viewport={{ once: true }}
+      transition={{ duration: 0.6 }}
+      className="mx-auto w-full max-w-6xl px-4 py-6 sm:py-8"
+    >
       <div className="mb-4 sm:mb-6 flex items-center justify-between gap-2">
         <h2 className="text-xl sm:text-2xl font-semibold text-[#4a154b]">{title}</h2>
         <div className="flex gap-1 sm:gap-2">
-          <button
+          <motion.button
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
             aria-label="previous"
             onClick={() => setIndex((i) => Math.max(0, i - 1))}
             disabled={index === 0}
@@ -334,8 +360,10 @@ function Row({ title, products }: { title: string; products: ProductDoc[] }) {
                 strokeLinejoin="round"
               />
             </svg>
-          </button>
-          <button
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
             aria-label="next"
             onClick={() => setIndex((i) => Math.min(maxIndex, i + 1))}
             disabled={index >= maxIndex}
@@ -361,18 +389,31 @@ function Row({ title, products }: { title: string; products: ProductDoc[] }) {
                 strokeLinejoin="round"
               />
             </svg>
-          </button>
+          </motion.button>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:gap-6 md:grid-cols-4">
-        {displayed.map((p) => (
-          <ProductCard
-            key={`${p._id}-${p.colorKey || "default"}`}
-            product={p}
-          />
-        ))}
-      </div>
-    </section>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={index}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.3 }}
+          className="grid grid-cols-2 gap-3 sm:gap-4 md:gap-6 md:grid-cols-4"
+        >
+          {displayed.map((p, i) => (
+            <motion.div
+              key={`${p._id}-${p.colorKey || "default"}`}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: i * 0.1 }}
+            >
+              <ProductCard product={p} />
+            </motion.div>
+          ))}
+        </motion.div>
+      </AnimatePresence>
+    </motion.section>
   );
 }
 
@@ -495,15 +536,29 @@ export default function ProductShowcase() {
 
   return (
     <div>
-      <section className="mx-auto w-full max-w-6xl px-4 py-8 sm:py-12">
-        <h2 className="mb-4 sm:mb-6 text-center text-xl sm:text-2xl font-semibold text-[#4a154b] underline decoration-2 underline-offset-4">
+      <motion.section
+        initial={{ opacity: 0 }}
+        whileInView={{ opacity: 1 }}
+        viewport={{ once: true }}
+        transition={{ duration: 0.6 }}
+        className="mx-auto w-full max-w-6xl px-4 py-8 sm:py-12"
+      >
+        <motion.h2
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6 }}
+          className="mb-4 sm:mb-6 text-center text-xl sm:text-2xl font-semibold text-[#4a154b] underline decoration-2 underline-offset-4"
+        >
           Our Products
-        </h2>
+        </motion.h2>
         <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
           <div className="flex gap-3 sm:gap-4 md:gap-6 text-xs sm:text-sm overflow-x-auto pb-2 sm:pb-0 scrollbar-hide justify-center">
           {tabs.map((t) => (
-            <button
+            <motion.button
               key={t.key}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
               onClick={() => setActiveTab(t.key)}
               className={`font-medium transition cursor-pointer whitespace-nowrap ${
                 activeTab === t.key
@@ -512,34 +567,49 @@ export default function ProductShowcase() {
               }`}
             >
               {t.label}
-            </button>
+            </motion.button>
           ))}
           </div>
-          <Link
-            href="/products"
-            className="text-xs sm:text-sm font-medium text-neutral-900 hover:text-neutral-600 transition text-center sm:text-left"
+          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+            <Link
+              href="/products"
+              className="text-xs sm:text-sm font-medium text-neutral-900 hover:text-neutral-600 transition text-center sm:text-left"
+            >
+              <div className="flex items-center justify-center sm:justify-start gap-2 underline decoration-2 underline-offset-4">
+              EXPLORE ALL
+              <Image
+                src="/right.svg"
+                alt="arrow right"
+                width={14}
+                height={14}
+                className="sm:w-4 sm:h-4"
+              />
+              </div>
+            </Link>
+          </motion.div>
+        </div>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.3 }}
+            className="grid grid-cols-2 gap-3 sm:gap-4 md:gap-6 md:grid-cols-4"
           >
-            <div className="flex items-center justify-center sm:justify-start gap-2 underline decoration-2 underline-offset-4">
-            EXPLORE ALL
-            <Image
-              src="/right.svg"
-              alt="arrow right"
-              width={14}
-              height={14}
-              className="sm:w-4 sm:h-4"
-            />
-            </div>
-          </Link>
-        </div>
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:gap-6 md:grid-cols-4">
-          {tabProducts.slice(0, 4).map((p) => (
-            <ProductCard
-              key={`${p._id}-${p.colorKey || "default"}`}
-              product={p}
-            />
-          ))}
-        </div>
-      </section>
+            {tabProducts.slice(0, 4).map((p, i) => (
+              <motion.div
+                key={`${p._id}-${p.colorKey || "default"}`}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: i * 0.1 }}
+              >
+                <ProductCard product={p} />
+              </motion.div>
+            ))}
+          </motion.div>
+        </AnimatePresence>
+      </motion.section>
 
       <Row
         title="BestSellers"

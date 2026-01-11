@@ -1,5 +1,6 @@
 'use client';
 import React from 'react';
+import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -16,16 +17,26 @@ const Input: React.FC<InputProps> = ({
   ...props
 }) => {
   return (
-    <div className="w-full">
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="w-full"
+    >
       {label && (
-        <label className="block text-sm font-medium text-neutral-700 mb-1.5">
+        <motion.label
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.3, delay: 0.1 }}
+          className="block text-sm font-medium text-neutral-700 mb-1.5"
+        >
           {label}
-        </label>
+        </motion.label>
       )}
       <input
         className={cn(
-          'w-full px-4 py-2.5 border rounded-lg transition-colors',
-          'focus:outline-none focus:ring-2 focus:ring-[#FF9AA2] focus:border-transparent',
+          'w-full px-4 py-2.5 border rounded-lg transition-all duration-200',
+          'focus:outline-none focus:ring-2 focus:ring-[#FF9AA2] focus:border-transparent focus:scale-[1.01]',
           error
             ? 'border-[#EF4444] focus:ring-[#EF4444]'
             : 'border-neutral-300 hover:border-[#FF9AA2]/50',
@@ -35,12 +46,25 @@ const Input: React.FC<InputProps> = ({
         {...props}
       />
       {error && (
-        <p className="mt-1 text-sm text-[#EF4444]">{error}</p>
+        <motion.p
+          initial={{ opacity: 0, y: -5 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mt-1 text-sm text-[#EF4444]"
+        >
+          {error}
+        </motion.p>
       )}
       {helperText && !error && (
-        <p className="mt-1 text-sm text-neutral-500">{helperText}</p>
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.3 }}
+          className="mt-1 text-sm text-neutral-500"
+        >
+          {helperText}
+        </motion.p>
       )}
-    </div>
+    </motion.div>
   );
 };
 
