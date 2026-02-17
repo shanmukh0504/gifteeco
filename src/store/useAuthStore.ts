@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
+import { isTokenExpired } from '@/lib/utils';
 
 interface User {
   _id: string;
@@ -16,11 +17,12 @@ interface AuthState {
   setHasHydrated: (state: boolean) => void;
   login: (user: User, token: string) => void;
   logout: () => void;
+  checkTokenValidity: () => boolean;
 }
 
 const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       token: null,
       isAuthenticated: false,
@@ -35,6 +37,15 @@ const useAuthStore = create<AuthState>()(
       },
       logout: () => {
         set({ user: null, token: null, isAuthenticated: false });
+      },
+      checkTokenValidity: () => {
+        const state = get();
+        if (!state.token || isTokenExpired(state.token)) {
+          // Token is expired or invalid, logout the user
+          set({ user: null, token: null, isAuthenticated: false });
+          return false;
+        }
+        return true;
       },
     }),
     {

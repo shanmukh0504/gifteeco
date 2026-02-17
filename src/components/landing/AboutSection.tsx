@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { motion } from "framer-motion";
 
 const features = [
   {
@@ -87,14 +88,26 @@ export default function AboutSection() {
 
       <div className="relative z-10 mx-auto w-full max-w-[1536px] px-4 md:px-6">
         {/* Header */}
-        <div className="mb-8 sm:mb-12 md:mb-16 text-center">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6 }}
+          className="mb-8 sm:mb-12 md:mb-16 text-center"
+        >
           <h2 className="text-2xl sm:text-3xl md:text-[42px] font-semibold text-neutral-800 capitalize leading-[110%] font-dm-sans">
             Why Choose <span style={{ color: "#CF6144" }}>GifteeCo?</span>
           </h2>
-        </div>
+        </motion.div>
 
         <div className="mb-8 sm:mb-12 md:mb-16 grid gap-6 sm:gap-8 lg:gap-12 lg:grid-cols-2 lg:items-center">
-          <div className="relative space-y-3 sm:space-y-4 md:space-y-5">
+          <motion.div
+            initial={{ opacity: 0, x: -30 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+            className="relative space-y-3 sm:space-y-4 md:space-y-5"
+          >
             <h3 className="relative z-10 text-2xl sm:text-3xl md:text-[40px] font-semibold text-[#1D1D1D] leading-[130%] sm:leading-[150%] font-dm-sans">
               Thoughtful Gifting That Builds Stronger Connections
             </h3>
@@ -104,15 +117,24 @@ export default function AboutSection() {
               quality, personalization, and care to help companies celebrate
               teams, clients, and moments that matter.
             </p>
-          </div>
+          </motion.div>
 
           {/* Right Side - shape.svg container with polygon image, star2, and spring */}
-          <div className="relative hidden lg:flex justify-center lg:justify-end">
+          <motion.div
+            initial={{ opacity: 0, x: 30 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+            whileHover={{ scale: 1.05 }}
+            className="relative hidden lg:flex justify-center lg:justify-end"
+          >
             {/* Container for shape.svg and all elements attached to it - rotated */}
-            <div
+            <motion.div
+              initial={{ rotate: -18.73 }}
+              whileHover={{ rotate: -15 }}
+              transition={{ duration: 0.3 }}
               className="relative w-full max-w-[500px] aspect-[5/6]"
               style={{
-                transform: "rotate(-18.73deg)",
                 transformOrigin: "center",
               }}
             >
@@ -186,11 +208,23 @@ export default function AboutSection() {
                   className="w-full h-full object-contain"
                 />
               </div>
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
         </div>
 
-        <div className="grid gap-6">
+        <motion.div
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: "-50px" }}
+          variants={{
+            visible: {
+              transition: {
+                staggerChildren: 0.15,
+              },
+            },
+          }}
+          className="grid gap-6"
+        >
           {/* First row: 2fr : 3fr */}
           <div
             className="grid gap-6"
@@ -205,8 +239,13 @@ export default function AboutSection() {
               }}
             >
               {features.slice(0, 2).map((feature, index) => (
-                <div
+                <motion.div
                   key={index}
+                  variants={{
+                    hidden: { opacity: 0, y: 30 },
+                    visible: { opacity: 1, y: 0 },
+                  }}
+                  whileHover={{ scale: 1.02, y: -5 }}
                   className="rounded-xl sm:rounded-2xl border border-neutral-200 bg-white p-4 sm:p-6 md:p-8"
                   style={{
                     boxShadow: "4px 4px 0px rgba(187, 128, 79, 0.5)",
@@ -218,14 +257,19 @@ export default function AboutSection() {
                   <p className="text-sm sm:text-base leading-6 text-neutral-700">
                     {feature.description}
                   </p>
-                </div>
+                </motion.div>
               ))}
             </div>
             {/* Mobile: single column */}
             <div className="grid gap-4 sm:gap-6 md:hidden">
               {features.slice(0, 2).map((feature, index) => (
-                <div
+                <motion.div
                   key={index}
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.4, delay: index * 0.1 }}
+                  whileHover={{ scale: 1.02, y: -5 }}
                   className="rounded-xl sm:rounded-2xl border border-neutral-200 bg-white p-4 sm:p-6"
                   style={{
                     boxShadow: "4px 4px 0px rgba(187, 128, 79, 0.5)",
@@ -237,7 +281,7 @@ export default function AboutSection() {
                   <p className="text-sm sm:text-base leading-6 text-neutral-700">
                     {feature.description}
                   </p>
-                </div>
+                </motion.div>
               ))}
             </div>
           </div>
@@ -255,8 +299,13 @@ export default function AboutSection() {
               }}
             >
               {features.slice(2, 4).map((feature, index) => (
-                <div
+                <motion.div
                   key={index + 2}
+                  variants={{
+                    hidden: { opacity: 0, y: 30 },
+                    visible: { opacity: 1, y: 0 },
+                  }}
+                  whileHover={{ scale: 1.02, y: -5 }}
                   className="rounded-xl sm:rounded-2xl border border-neutral-200 bg-white p-4 sm:p-6 md:p-8"
                   style={{
                     boxShadow: "4px 4px 0px rgba(187, 128, 79, 0.5)",
@@ -268,14 +317,19 @@ export default function AboutSection() {
                   <p className="text-sm sm:text-base leading-6 text-neutral-700">
                     {feature.description}
                   </p>
-                </div>
+                </motion.div>
               ))}
             </div>
             {/* Mobile: single column */}
             <div className="grid gap-4 sm:gap-6 md:hidden">
               {features.slice(2, 4).map((feature, index) => (
-                <div
+                <motion.div
                   key={index + 2}
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.4, delay: index * 0.1 }}
+                  whileHover={{ scale: 1.02, y: -5 }}
                   className="rounded-xl sm:rounded-2xl border border-neutral-200 bg-white p-4 sm:p-6"
                   style={{
                     boxShadow: "4px 4px 0px rgba(187, 128, 79, 0.5)",
@@ -287,11 +341,11 @@ export default function AboutSection() {
                   <p className="text-sm sm:text-base leading-6 text-neutral-700">
                     {feature.description}
                   </p>
-                </div>
+                </motion.div>
               ))}
             </div>
           </div>
-        </div>
+        </motion.div>
       </div>
     </section>
   );

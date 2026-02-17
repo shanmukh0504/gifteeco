@@ -3,6 +3,7 @@
 import { memo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { motion } from "framer-motion";
 import useWishlistStore from "@/store/useWishlistStore";
 import useCartStore from "@/store/useCartStore";
 import useAuthStore from "@/store/useAuthStore";
@@ -171,7 +172,14 @@ function ProductCard({ product }: { product: Product }) {
         onClose={() => setShowAuthModal(false)}
         initialMode="login"
       />
-      <div className="group relative">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-50px" }}
+        transition={{ duration: 0.4 }}
+        whileHover={{ y: -5 }}
+        className="group relative"
+      >
         <Link
           href={`/product/${product._id}${
             product.colorKey && product.colorKey !== "Gold"
@@ -184,19 +192,27 @@ function ProductCard({ product }: { product: Product }) {
         >
           <div className="relative aspect-[4/5] w-full overflow-hidden rounded-2xl bg-white">
             {img ? (
-              <Image
-                src={img}
-                alt={product.name}
-                fill
-                className="object-cover transition group-hover:scale-[1.03]"
-              />
+              <motion.div
+                whileHover={{ scale: 1.05 }}
+                transition={{ duration: 0.3 }}
+                className="relative h-full w-full"
+              >
+                <Image
+                  src={img}
+                  alt={product.name}
+                  fill
+                  className="object-cover"
+                />
+              </motion.div>
             ) : (
               <div className="flex h-full items-center justify-center text-xs text-neutral-400">
                 No image
               </div>
             )}
-            <button
+            <motion.button
               onClick={handleWishlistClick}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
               className={`absolute right-2 top-2 z-10 rounded-lg bg-white/95 p-2 backdrop-blur-sm transition hover:bg-white ${
                 isWishlisted
                   ? "opacity-100 shadow-pink-200"
@@ -223,7 +239,7 @@ function ProductCard({ product }: { product: Product }) {
                   strokeLinejoin="round"
                 />
               </svg>
-            </button>
+            </motion.button>
           </div>
           <div className="mt-3 space-y-1">
             <div className="truncate text-sm font-semibold text-neutral-900">
@@ -240,8 +256,10 @@ function ProductCard({ product }: { product: Product }) {
                   </div>
                 )}
               </div>
-              <button
+              <motion.button
                 onClick={handleCartClick}
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
                 className={`rounded-lg p-2 transition ${
                   cartQuantity > 0
                     ? "bg-[var(--color-cart-active)] hover:bg-[var(--color-cart-active-hover)]"
@@ -263,11 +281,11 @@ function ProductCard({ product }: { product: Product }) {
                     fill={cartQuantity > 0 ? "#FFFFFF" : "#1C1B1F"}
                   />
                 </svg>
-              </button>
+              </motion.button>
             </div>
           </div>
         </Link>
-      </div>
+      </motion.div>
     </>
   );
 }
@@ -308,14 +326,32 @@ const ProductsGrid = memo(function ProductsGrid({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:gap-4 md:gap-6 md:grid-cols-3 lg:grid-cols-4">
-      {products.map((product) => (
-        <ProductCard
+    <motion.div
+      initial="hidden"
+      whileInView="visible"
+      viewport={{ once: true, margin: "-50px" }}
+      variants={{
+        visible: {
+          transition: {
+            staggerChildren: 0.1,
+          },
+        },
+      }}
+      className="grid grid-cols-2 gap-3 sm:gap-4 md:gap-6 md:grid-cols-3 lg:grid-cols-4"
+    >
+      {products.map((product, index) => (
+        <motion.div
           key={`${product._id}-${product.colorKey || "default"}`}
-          product={product}
-        />
+          variants={{
+            hidden: { opacity: 0, y: 20 },
+            visible: { opacity: 1, y: 0 },
+          }}
+          transition={{ duration: 0.4 }}
+        >
+          <ProductCard product={product} />
+        </motion.div>
       ))}
-    </div>
+    </motion.div>
   );
 });
 

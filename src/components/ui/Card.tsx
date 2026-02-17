@@ -1,5 +1,6 @@
 'use client';
 import React from 'react';
+import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
 interface CardProps {
@@ -22,8 +23,15 @@ const Card: React.FC<CardProps> = ({
     lg: 'p-8',
   };
 
+  const MotionDiv = motion.div;
+
   return (
-    <div
+    <MotionDiv
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ duration: 0.4 }}
+      whileHover={hover ? { scale: 1.02, y: -5 } : {}}
       className={cn(
         'bg-white rounded-xl shadow-sm border border-neutral-200',
         paddingClasses[padding],
@@ -32,7 +40,7 @@ const Card: React.FC<CardProps> = ({
       )}
     >
       {children}
-    </div>
+    </MotionDiv>
   );
 };
 

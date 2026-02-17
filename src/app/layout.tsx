@@ -42,7 +42,7 @@ export default function RootLayout({
           <ScrollToTop />
         </Suspense>
         <Navbar />
-        {children}
+        <PageTransition>{children}</PageTransition>
         <Footer />
         <Toaster richColors position="bottom-right" />
         <CartLoadingOverlay />
