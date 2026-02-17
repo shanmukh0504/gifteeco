@@ -7,9 +7,11 @@ import Link from "next/link";
 import useCartStore from "@/store/useCartStore";
 import useAuthStore from "@/store/useAuthStore";
 import AuthModal from "@/components/auth/AuthModal";
+import CustomizedDetailsModal from "@/components/cart/CustomizedDetailsModal";
 import { toast } from "sonner";
 import Button from "@/components/ui/Button";
 import { CorporateGiftsSection } from "@/components/shared/ProductSections";
+import type { SlotKey, BoundingBox } from "@/constants/customization";
 
 type Address = {
   name: string;
@@ -215,6 +217,10 @@ function CheckoutPageContent() {
   const [paymentMethod, setPaymentMethod] = useState<string>("card");
   const [checkoutItems, setCheckoutItems] = useState<CheckoutItem[]>([]);
   const [isSamplePurchase, setIsSamplePurchase] = useState(false);
+  const [customizedDetailsModal, setCustomizedDetailsModal] = useState<{
+    isOpen: boolean;
+    item: CheckoutItem | null;
+  }>({ isOpen: false, item: null });
 
   const fetchAddresses = useCallback(async () => {
     if (!token) return;
@@ -276,8 +282,8 @@ function CheckoutPageContent() {
     } else {
       // Regular checkout from cart
       setIsSamplePurchase(false);
-      console.log('=== SETTING CHECKOUT ITEMS FROM CART ===');
-      console.log('itemsWithDetails:', itemsWithDetails);
+      console.log("=== SETTING CHECKOUT ITEMS FROM CART ===");
+      console.log("itemsWithDetails:", itemsWithDetails);
       itemsWithDetails.forEach((item, index) => {
         console.log(`Cart Item ${index}:`, {
           productId: item.productId,
@@ -285,7 +291,9 @@ function CheckoutPageContent() {
           size: item.size,
           color: item.color,
           hasCustomization: !!item.customization,
-          customization: item.customization ? JSON.stringify(item.customization, null, 2) : null,
+          customization: item.customization
+            ? JSON.stringify(item.customization, null, 2)
+            : null,
         });
       });
       setCheckoutItems(itemsWithDetails);
@@ -447,8 +455,14 @@ function CheckoutPageContent() {
                             </div>
                           )}
                           {hasCustomization && (
-                            <Link
-                              href={`/product/${item.productId}`}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setCustomizedDetailsModal({
+                                  isOpen: true,
+                                  item,
+                                })
+                              }
                               className="inline-flex items-center gap-1 mt-2 px-3 py-1 rounded-full bg-[#EDF5FF] text-[#0258D9] text-sm hover:bg-[#D6E9FF] transition"
                             >
                               Customized details
@@ -467,7 +481,7 @@ function CheckoutPageContent() {
                                   strokeLinejoin="round"
                                 />
                               </svg>
-                            </Link>
+                            </button>
                           )}
                         </div>
 
@@ -633,7 +647,7 @@ function CheckoutPageContent() {
 
                     try {
                       // Prepare order items with customization details
-                      console.log('=== CHECKOUT ITEMS BEFORE MAPPING ===');
+                      console.log("=== CHECKOUT ITEMS BEFORE MAPPING ===");
                       checkoutItems.forEach((item, index) => {
                         console.log(`Item ${index}:`, {
                           productId: item.productId,
@@ -641,7 +655,9 @@ function CheckoutPageContent() {
                           size: item.size,
                           color: item.color,
                           hasCustomization: !!item.customization,
-                          customization: item.customization ? JSON.stringify(item.customization, null, 2) : null,
+                          customization: item.customization
+                            ? JSON.stringify(item.customization, null, 2)
+                            : null,
                         });
                       });
 
@@ -655,18 +671,21 @@ function CheckoutPageContent() {
                           color: item.color || "",
                           price: item.product?.price || 0,
                         };
-                        
+
                         // Only add customization if it exists and has content
-                        if (item.customization && hasActualCustomization(item.customization)) {
+                        if (
+                          item.customization &&
+                          hasActualCustomization(item.customization)
+                        ) {
                           orderItem.customization = item.customization;
                         } else {
                           orderItem.customization = null;
                         }
-                        
+
                         return orderItem;
                       });
 
-                      console.log('=== ORDER ITEMS TO SEND ===');
+                      console.log("=== ORDER ITEMS TO SEND ===");
                       orderItems.forEach((item, index) => {
                         console.log(`Order Item ${index}:`, {
                           product: item.product,
@@ -674,7 +693,9 @@ function CheckoutPageContent() {
                           size: item.size,
                           color: item.color,
                           hasCustomization: !!item.customization,
-                          customization: item.customization ? JSON.stringify(item.customization, null, 2) : null,
+                          customization: item.customization
+                            ? JSON.stringify(item.customization, null, 2)
+                            : null,
                         });
                       });
 
@@ -685,21 +706,25 @@ function CheckoutPageContent() {
                           Authorization: `Bearer ${token}`,
                           "Content-Type": "application/json",
                         },
-                        body: JSON.stringify({
-                          items: orderItems,
-                          totalAmount: subtotal,
-                          shippingInfo: {
-                            firstName: selectedAddress.name,
-                            address: selectedAddress.address,
-                            city: selectedAddress.city,
-                            state: selectedAddress.state,
-                            postalCode: selectedAddress.pincode,
+                        body: JSON.stringify(
+                          {
+                            items: orderItems,
+                            totalAmount: subtotal,
+                            shippingInfo: {
+                              firstName: selectedAddress.name,
+                              address: selectedAddress.address,
+                              city: selectedAddress.city,
+                              state: selectedAddress.state,
+                              postalCode: selectedAddress.pincode,
+                            },
+                            payment: {
+                              method: paymentMethod === "cod" ? "cod" : "cod", // Always use COD for now
+                              status: "pending",
+                            },
                           },
-                          payment: {
-                            method: paymentMethod === "cod" ? "cod" : "cod", // Always use COD for now
-                            status: "pending",
-                          },
-                        }, null, 2), // Pretty print for debugging
+                          null,
+                          2
+                        ), // Pretty print for debugging
                       });
 
                       if (!response.ok) {
@@ -741,6 +766,39 @@ function CheckoutPageContent() {
       <div className="mt-12">
         <CorporateGiftsSection />
       </div>
+      {customizedDetailsModal.item && (
+        <CustomizedDetailsModal
+          isOpen={customizedDetailsModal.isOpen}
+          onClose={() =>
+            setCustomizedDetailsModal({ isOpen: false, item: null })
+          }
+          productName={customizedDetailsModal.item.product?.name || "Product"}
+          productId={customizedDetailsModal.item.productId}
+          productColor={customizedDetailsModal.item.color}
+          customization={
+            customizedDetailsModal.item.customization as
+              | Record<string, unknown>
+              | undefined
+          }
+          product={customizedDetailsModal.item.product as
+            | {
+                colors?: Record<
+                  string,
+                  {
+                    images?: string[];
+                    customization?: Record<string, { mockupImage?: string }>;
+                  }
+                >;
+                noColor?: {
+                  images?: string[];
+                  customization?: Record<string, { mockupImage?: string }>;
+                };
+                customDefaults?: Record<SlotKey, BoundingBox>;
+              }
+            | undefined}
+          readOnly
+        />
+      )}
     </>
   );
 }

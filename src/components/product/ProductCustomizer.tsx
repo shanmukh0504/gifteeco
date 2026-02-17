@@ -11,6 +11,8 @@ import {
   type DesignElement,
   type PrintLocation,
 } from "@/lib/designStorage";
+import useCartStore from "@/store/useCartStore";
+import useAuthStore from "@/store/useAuthStore";
 import ProductPreview from "./ProductPreview";
 import ElementControls from "./ElementControls";
 import ElementPanel from "./ElementPanel";
@@ -32,6 +34,8 @@ interface ProductCustomizerProps {
 export default function ProductCustomizer({ product }: ProductCustomizerProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { token, isAuthenticated } = useAuthStore();
+  const { addItem, removeItem, fetchCart } = useCartStore();
   const colorEntries: ColorEntry[] = useMemo(() => {
     if (product.hasColorOptions && product.colors) {
       return Object.entries(product.colors) as ColorEntry[];
@@ -853,7 +857,7 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const printLocationsByColor: Record<string, PrintLocation[]> = {};
     Object.keys(elements).forEach((colorKey) => {
       const colorElements = elements[colorKey];
@@ -876,8 +880,138 @@ export default function ProductCustomizer({ product }: ProductCustomizerProps) {
     const mergedElements = existingDesign?.elements || {};
     const mergedPrintLocations = existingDesign?.printLocations || {};
     mergedElements[selectedColor] = elements[selectedColor];
-    mergedPrintLocations[selectedColor] =
-      printLocationsByColor[selectedColor] || [];
+    
+    const existingPrintLocations = mergedPrintLocations[selectedColor] || [];
+    const newPrintLocations = printLocationsByColor[selectedColor] || [];
+    
+    const existingBySlot = new Map<string, PrintLocation>();
+    existingPrintLocations.forEach((loc) => {
+      if (loc.slot) {
+        existingBySlot.set(loc.slot, loc);
+      }
+    });
+    
+    const mergedPrintLocationsForColor = newPrintLocations.map((newLoc) => {
+      const existing = existingBySlot.get(newLoc.slot || "");
+      if (existing && existing.uploadedImage) {
+        return {
+          ...newLoc,
+          uploadedImage: existing.uploadedImage,
+        };
+      }
+      return newLoc;
+    });
+    
+    existingPrintLocations.forEach((existingLoc) => {
+      if (existingLoc.slot && existingLoc.uploadedImage) {
+        const hasNewLocation = newPrintLocations.some(
+          (newLoc) => newLoc.slot === existingLoc.slot
+        );
+        if (!hasNewLocation) {
+          mergedPrintLocationsForColor.push(existingLoc);
+        }
+      }
+    });
+    
+    mergedPrintLocations[selectedColor] = mergedPrintLocationsForColor;
+
+    let editingCartItemId: string | null = null;
+    let editingFromCart = false;
+    
+    if (typeof window !== "undefined") {
+      editingCartItemId = sessionStorage.getItem(`editing-cart-item-${product._id}`);
+      editingFromCart = sessionStorage.getItem(`editing-from-cart-${product._id}`) === "true";
+      
+      if (!editingCartItemId || !editingFromCart) {
+        const allKeys = Object.keys(sessionStorage);
+        for (const key of allKeys) {
+          if (key.startsWith("editing-cart-item-") && key.includes(product._id)) {
+            editingCartItemId = sessionStorage.getItem(key);
+          }
+          if (key.startsWith("editing-from-cart-") && key.includes(product._id)) {
+            editingFromCart = sessionStorage.getItem(key) === "true";
+          }
+        }
+      }
+    }
+
+    const shouldUpdateCart = editingFromCart && editingCartItemId && isAuthenticated && token;
+    
+    if (shouldUpdateCart) {
+      try {
+        await fetchCart(token, true);
+        
+        const currentItems = useCartStore.getState().items;
+        
+        let cartItem = currentItems.find(
+          (item) => item.cartItemId === editingCartItemId
+        );
+
+        if (!cartItem) {
+          cartItem = currentItems.find(
+            (item) => item.productId === product._id
+          );
+        }
+
+        if (!cartItem) {
+          toast.error("Cart item not found. Please try again from the cart page.");
+          if (typeof window !== "undefined") {
+            sessionStorage.removeItem(`editing-cart-item-${product._id}`);
+            sessionStorage.removeItem(`editing-from-cart-${product._id}`);
+          }
+        } else {
+          const colorKey =
+            selectedColor !== "Gold" ? selectedColor : "default";
+          const printLocationsForCart = mergedPrintLocations[colorKey] || [];
+
+          const customizationData = {
+            printLocations:
+              printLocationsForCart.length > 0 ? printLocationsForCart : undefined,
+            elements: mergedElements || undefined,
+          };
+
+          await removeItem(
+            cartItem.productId,
+            cartItem.size,
+            cartItem.color,
+            token,
+            undefined,
+            editingCartItemId || undefined,
+            cartItem.customization
+          );
+
+          await addItem(
+            {
+              productId: product._id,
+              quantity: cartItem.quantity,
+              size: cartItem.size,
+              color: cartItem.color,
+              customization: customizationData,
+            },
+            token
+          );
+
+          await fetchCart(token, true);
+
+          if (typeof window !== "undefined") {
+            sessionStorage.removeItem(`editing-cart-item-${product._id}`);
+            sessionStorage.removeItem(`editing-from-cart-${product._id}`);
+          }
+
+          toast.success("Cart item updated!");
+          router.push("/cart");
+          return;
+        }
+      } catch (error) {
+        console.error("Error updating cart item:", error);
+        toast.error("Failed to update cart item");
+        if (typeof window !== "undefined") {
+          sessionStorage.removeItem(`editing-cart-item-${product._id}`);
+          sessionStorage.removeItem(`editing-from-cart-${product._id}`);
+        }
+        return;
+      }
+    }
 
     const designData: SavedDesign = {
       productId: product._id,
