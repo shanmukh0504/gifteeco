@@ -8,8 +8,7 @@ import Footer from "@/components/landing/Footer";
 import CartLoadingOverlay from "@/components/cart/CartLoadingOverlay";
 import CartStorageErrorHandler from "@/components/cart/CartStorageErrorHandler";
 import ScrollToTop from "@/components/shared/ScrollToTop";
-import PageTransition from "@/components/shared/PageTransition";
-import SessionGuard from "@/components/shared/SessionGuard";
+import AuthTokenMonitor from "@/components/auth/AuthTokenMonitor";
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -48,7 +47,7 @@ export default function RootLayout({
         <Toaster richColors position="bottom-right" />
         <CartLoadingOverlay />
         <CartStorageErrorHandler />
-        <SessionGuard />
+        <AuthTokenMonitor />
       </body>
     </html>
   );

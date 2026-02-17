@@ -40,6 +40,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
   const addItem = useCartStore((state) => state.addItem);
   const removeItem = useCartStore((state) => state.removeItem);
   const getItemQuantity = useCartStore((state) => state.getItemQuantity);
+  const fetchCart = useCartStore((state) => state.fetchCart);
   const removeWishlistItem = useWishlistStore((state) => state.removeItem);
   // Subscribe to cart items to trigger re-renders when cart changes
   useCartStore((state) => state.items);
@@ -821,6 +822,14 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                           `editing-cart-item-${product._id}`
                         )
                       : null;
+                  
+                  // Check if we're editing from cart page
+                  const editingFromCart =
+                    typeof window !== "undefined"
+                      ? sessionStorage.getItem(
+                          `editing-from-cart-${product._id}`
+                        ) === "true"
+                      : false;
 
                   if (editingCartItemId) {
                     // We're editing an existing cart item - remove the old one and add the updated one
@@ -844,10 +853,13 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                       );
                     }
 
-                    // Clear the editing flag
+                    // Clear the editing flags
                     if (typeof window !== "undefined") {
                       sessionStorage.removeItem(
                         `editing-cart-item-${product._id}`
+                      );
+                      sessionStorage.removeItem(
+                        `editing-from-cart-${product._id}`
                       );
                     }
                   }
@@ -864,6 +876,11 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                     token,
                     () => setShowAuthModal(true)
                   );
+
+                  // Refresh cart if authenticated
+                  if (token && editingCartItemId) {
+                    await fetchCart(token, true);
+                  }
 
                   // If coming from wishlist, remove from wishlist after adding to cart
                   const fromWishlist = searchParams.get("fromWishlist");
@@ -890,6 +907,13 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                   toast.success(
                     editingCartItemId ? "Cart item updated!" : "Added to cart!"
                   );
+                  
+                  // If editing from cart, redirect to cart page
+                  if (editingFromCart && editingCartItemId) {
+                    router.push("/cart");
+                    return;
+                  }
+                  
                   setJustAddedToCart(true);
                 } catch (error) {
                   const errorMessage =

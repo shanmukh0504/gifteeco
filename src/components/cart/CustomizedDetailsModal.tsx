@@ -26,6 +26,8 @@ type CustomizedDetailsModalProps = {
   productId?: string;
   productColor?: string;
   cartItemId?: string;
+  /** When true, only show details with no "Edit the details" button (e.g. on checkout) */
+  readOnly?: boolean;
   customization?: {
     printLocations?: PrintLocation[];
     elements?: Record<string, Record<SlotKey, DesignElement[]>>;
@@ -425,6 +427,7 @@ export default function CustomizedDetailsModal({
   productId,
   productColor,
   cartItemId,
+  readOnly = false,
   customization,
   product,
 }: CustomizedDetailsModalProps) {
@@ -509,12 +512,12 @@ export default function CustomizedDetailsModal({
         for (const slot of ["front", "back", "chest"] as SlotKey[]) {
           const mockup = mockupImages[slot];
           const elements = elementsBySlot[slot];
-          
+
           // Check if this slot has an uploaded image
           const locationWithUpload = customization?.printLocations?.find(
             (loc) => loc.slot === slot && loc.uploadedImage
           );
-          
+
           if (mockup) {
             if (elements.length > 0 || locationWithUpload?.uploadedImage) {
               const composite = await createCompositeImage(
@@ -598,14 +601,14 @@ export default function CustomizedDetailsModal({
   // Get slots that have customization (either elements or uploaded images)
   const customizedSlots = useMemo(() => {
     const slotsSet = new Set<SlotKey>();
-    
+
     // Add slots with elements
     Object.entries(elementsBySlot).forEach(([slot, elements]) => {
       if (elements.length > 0) {
         slotsSet.add(slot as SlotKey);
       }
     });
-    
+
     // Add slots with uploaded images (even if no elements)
     if (customization?.printLocations) {
       customization.printLocations.forEach((loc) => {
@@ -614,7 +617,7 @@ export default function CustomizedDetailsModal({
         }
       });
     }
-    
+
     return Array.from(slotsSet);
   }, [elementsBySlot, customization]);
 
@@ -624,7 +627,10 @@ export default function CustomizedDetailsModal({
       setSelectedSlot(customizedSlots[0]);
     } else if (customizedSlots.length === 0 && !selectedSlot) {
       // If no customized slots found, check if there are any printLocations with uploaded images
-      if (customization?.printLocations && customization.printLocations.length > 0) {
+      if (
+        customization?.printLocations &&
+        customization.printLocations.length > 0
+      ) {
         const firstLocationWithImage = customization.printLocations.find(
           (loc) => loc.slot && loc.uploadedImage
         );
@@ -722,14 +728,47 @@ export default function CustomizedDetailsModal({
   const handleEditDetails = () => {
     if (!productId || !customization) return;
 
-    // Convert cart item customization to SavedDesign format and save to localStorage
-    // This will allow the customize page to load the exact customization state
+    let finalCartItemId = cartItemId;
+    if (!finalCartItemId && customization) {
+      try {
+        const normalized: Record<string, unknown> = {};
+        if (customization.printLocations && Array.isArray(customization.printLocations)) {
+          normalized.printLocations = [...customization.printLocations].sort((a: unknown, b: unknown) => {
+            const aSlot = (a as { slot?: string })?.slot || "";
+            const bSlot = (b as { slot?: string })?.slot || "";
+            if (aSlot !== bSlot) return aSlot.localeCompare(bSlot);
+            return JSON.stringify(a).localeCompare(JSON.stringify(b));
+          });
+        }
+        if (customization.elements && typeof customization.elements === 'object') {
+          normalized.elements = customization.elements;
+        }
+        Object.keys(customization).forEach(key => {
+          if (key !== 'printLocations' && key !== 'elements') {
+            normalized[key] = (customization as Record<string, unknown>)[key];
+          }
+        });
+        
+        const normalizedStr = JSON.stringify(normalized);
+        let hash = 0;
+        for (let i = 0; i < normalizedStr.length; i++) {
+          const char = normalizedStr.charCodeAt(i);
+          hash = ((hash << 5) - hash) + char;
+          hash = hash & hash;
+        }
+        finalCartItemId = `custom-${Math.abs(hash).toString(36)}`;
+      } catch {
+        finalCartItemId = "no-customization";
+      }
+    } else if (!finalCartItemId) {
+      finalCartItemId = "no-customization";
+    }
+
+
     try {
-      // Convert customization to SavedDesign format
       const selectedColorKey =
         productColor === "Gold" ? "default" : productColor || "default";
 
-      // Handle both printLocations and elements formats
       let elements: Record<string, Record<SlotKey, DesignElement[]>> = {};
       let printLocationsMap: Record<string, PrintLocation[]> | undefined =
         undefined;
@@ -738,11 +777,9 @@ export default function CustomizedDetailsModal({
         customization.printLocations &&
         Array.isArray(customization.printLocations)
       ) {
-        // New format: printLocations array
         printLocationsMap = {
           [selectedColorKey]: customization.printLocations,
         };
-        // Extract elements from printLocations
         const slotElements: Record<SlotKey, DesignElement[]> = {
           front: [],
           back: [],
@@ -755,7 +792,6 @@ export default function CustomizedDetailsModal({
         });
         elements[selectedColorKey] = slotElements;
       } else if (customization.elements) {
-        // Old format: elements already keyed by color
         elements = customization.elements as Record<
           string,
           Record<SlotKey, DesignElement[]>
@@ -770,12 +806,11 @@ export default function CustomizedDetailsModal({
         timestamp: Date.now(),
       };
 
-      // Save to localStorage so the customize page can load it
       saveDesign(savedDesign);
 
-      // Also save cartItemId to sessionStorage so we can update the correct cart item later
-      if (typeof window !== "undefined" && cartItemId) {
-        sessionStorage.setItem(`editing-cart-item-${productId}`, cartItemId);
+      if (typeof window !== "undefined" && finalCartItemId && productId) {
+        sessionStorage.setItem(`editing-cart-item-${productId}`, finalCartItemId);
+        sessionStorage.setItem(`editing-from-cart-${productId}`, "true");
       }
     } catch (error) {
       console.error("Error saving customization for editing:", error);
@@ -1011,10 +1046,7 @@ export default function CustomizedDetailsModal({
                 <div className="text-sm text-neutral-700">Image</div>
                 <div className="flex flex-wrap gap-2">
                   {selectedSlotUploadedImages.map((image, index) => (
-                    <div
-                      key={index}
-                      className="relative group"
-                    >
+                    <div key={index} className="relative group">
                       <div className="relative w-16 h-16 rounded-lg overflow-hidden border border-neutral-200">
                         <Image
                           src={image}
@@ -1026,7 +1058,7 @@ export default function CustomizedDetailsModal({
                       <button
                         onClick={() => {
                           // Download image
-                          const link = document.createElement('a');
+                          const link = document.createElement("a");
                           link.href = image;
                           link.download = `customized-image-${index + 1}.png`;
                           document.body.appendChild(link);
@@ -1036,8 +1068,18 @@ export default function CustomizedDetailsModal({
                         className="absolute -bottom-1 -right-1 bg-blue-600 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
                         title="Download image"
                       >
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        <svg
+                          className="w-3 h-3"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                          />
                         </svg>
                       </button>
                     </div>
@@ -1079,12 +1121,14 @@ export default function CustomizedDetailsModal({
 
         {/* Action Buttons */}
         <div className="flex gap-4 mt-6">
-          <button
-            onClick={handleEditDetails}
-            className="flex-1 px-4 py-2 bg-[var(--color-button)] text-white rounded-lg hover:bg-[var(--color-button-hover)] transition font-medium"
-          >
-            Edit the details
-          </button>
+          {!readOnly && (
+            <button
+              onClick={handleEditDetails}
+              className="flex-1 px-4 py-2 bg-[var(--color-button)] text-white rounded-lg hover:bg-[var(--color-button-hover)] transition font-medium"
+            >
+              Edit the details
+            </button>
+          )}
           <button
             onClick={onClose}
             className="flex-1 px-4 py-2 bg-neutral-100 text-neutral-700 rounded-lg hover:bg-neutral-200 transition font-medium border border-neutral-200"
